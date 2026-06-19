@@ -392,8 +392,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 
 function openStock(sym){
   const m = META[sym] || {};
+  // For past tickers not in META, find name from PAST_DATA
+  let name = m.name || '';
+  if(!name){
+    for(const date of Object.keys(PAST_DATA)){
+      const row = (PAST_DATA[date]||[]).find(r => r.symbol===sym);
+      if(row && row.name){ name = row.name; break; }
+    }
+  }
   document.getElementById('mTicker').textContent = sym;
-  document.getElementById('mName').textContent   = m.name || '';
+  document.getElementById('mName').textContent   = name;
   document.getElementById('mMeta').textContent   = [m.date, m.when, m.eps ? 'Est. EPS '+m.eps : ''].filter(Boolean).join(' · ');
   switchTab(0);
   buildHistory(sym, m);
