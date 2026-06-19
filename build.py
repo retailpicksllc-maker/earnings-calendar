@@ -211,8 +211,10 @@ except Exception as e:
 REV_FIELDS = [
     'RevenueFromContractWithCustomerExcludingAssessedTax',
     'Revenues',
+    'RevenuesNetOfInterestExpense',
     'SalesRevenueNet',
     'RevenueFromContractWithCustomerIncludingAssessedTax',
+    'OtherIncome',
 ]
 
 def fetch_revenue_sec(ticker):
@@ -221,6 +223,8 @@ def fetch_revenue_sec(ticker):
     cik = cik_map.get(ticker)
     if not cik:
         return ticker, {}
+    best_qtrs = {}
+    best_latest = None
     for field in REV_FIELDS:
         try:
             url = f'https://data.sec.gov/api/xbrl/companyconcept/CIK{cik}/us-gaap/{field}.json'
@@ -236,16 +240,18 @@ def fetch_revenue_sec(ticker):
                     start = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
                     end   = datetime.strptime(e['end'], '%Y-%m-%d')
                     if 75 <= (end - start).days <= 105:
-                        # Key by "Mon YYYY" to match fiscalQtrEnd
                         key = end.strftime('%b %Y')
-                        qtrs[key] = round(e['val'] / 1e6, 1)  # store in $M
+                        qtrs[key] = round(e['val'] / 1e6, 1)
                 except:
                     continue
             if qtrs:
-                return ticker, qtrs
+                latest = max(datetime.strptime(k, '%b %Y') for k in qtrs)
+                if best_latest is None or latest > best_latest:
+                    best_latest = latest
+                    best_qtrs = qtrs
         except:
             continue
-    return ticker, {}
+    return ticker, best_qtrs
 
 def rev_is_stale(ticker):
     if ticker not in revenue_cache or not revenue_cache[ticker]:
