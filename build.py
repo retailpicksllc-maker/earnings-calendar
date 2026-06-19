@@ -248,7 +248,7 @@ def fetch_revenue_sec(ticker):
     return ticker, {}
 
 def rev_is_stale(ticker):
-    """True if revenue cache is missing or more than 6 months behind history."""    if ticker not in revenue_cache or not revenue_cache[ticker]:
+    if ticker not in revenue_cache or not revenue_cache[ticker]:
         return True
     hist_quarters = history.get(ticker, [])
     if not hist_quarters:
