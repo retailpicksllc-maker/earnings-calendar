@@ -71,23 +71,32 @@ for mc, sym in sorted(all_rows_flat, reverse=True):
         break
 
 def fetch_history(ticker):
-    url = f'https://api.nasdaq.com/api/company/{ticker.lower()}/earnings-surprise'
     try:
-        req = urllib.request.Request(url, headers={
-            'User-Agent': 'Mozilla/5.0',
-            'Accept': 'application/json',
-        })
-        with urllib.request.urlopen(req, timeout=6) as r:
-            d = json.loads(r.read())
-        rows = d.get('data', {}).get('earningsSurpriseTable', {}).get('rows', [])
+        import yfinance as yf
+        from datetime import timezone
+        t = yf.Ticker(ticker)
+        ed = t.get_earnings_dates(limit=16)
+        if ed is None or ed.empty:
+            return ticker, []
+        now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+        past = ed[ed.index < now].dropna(subset=['Reported EPS'])
+        rows = []
+        for dt, row in past.iterrows():
+            rows.append({
+                'fiscalQtrEnd': dt.strftime('%b %Y'),
+                'dateReported': dt.strftime('%-m/%-d/%Y'),
+                'eps': round(float(row['Reported EPS']), 2),
+                'consensusForecast': str(round(float(row['EPS Estimate']), 2)) if row['EPS Estimate'] == row['EPS Estimate'] else '',
+                'percentageSurprise': str(round(float(row['Surprise(%)']) , 2)) if row['Surprise(%)'] == row['Surprise(%)'] else ''
+            })
         return ticker, rows
     except:
         return ticker, []
 
 print(f"Fetching history for {len(top_tickers)} tickers...")
 history = {}
-with ThreadPoolExecutor(max_workers=30) as ex:
-    for ticker, rows in ex.map(fetch_history, top_tickers, timeout=90):
+with ThreadPoolExecutor(max_workers=10) as ex:
+    for ticker, rows in ex.map(fetch_history, top_tickers, timeout=120):
         if rows:
             history[ticker] = rows
 print(f"  Got history for {len(history)} tickers")
