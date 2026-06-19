@@ -53,6 +53,41 @@ with ThreadPoolExecutor(max_workers=10) as ex:
 total_companies = sum(len(v) for v in earnings.values())
 print(f"  Got {total_companies} companies across {len(earnings)} days")
 
+# ── Past earnings calendar (cached, up to 3 years) ────────────────────────────
+PAST_CACHE_FILE = 'data/past_calendar_cache.json'
+past_calendar_cached = {}
+if os.path.exists(PAST_CACHE_FILE):
+    try:
+        with open(PAST_CACHE_FILE) as f:
+            past_calendar_cached = json.load(f)
+        print(f"  Loaded past cache: {len(past_calendar_cached)} days cached")
+    except:
+        pass
+
+# Generate past trading days (up to 3 years back)
+past_days_needed = []
+d = today - timedelta(days=1)
+cutoff = today - timedelta(days=365*3)
+while d >= cutoff:
+    if d.weekday() < 5:
+        past_days_needed.append(d.strftime('%Y-%m-%d'))
+    d -= timedelta(days=1)
+
+dates_to_fetch = [d for d in past_days_needed if d not in past_calendar_cached]
+print(f"Fetching {len(dates_to_fetch)} uncached past trading days...")
+if dates_to_fetch:
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        for date_str, rows in ex.map(fetch_earnings_day, dates_to_fetch, timeout=600):
+            past_calendar_cached[date_str] = [r for r in (rows or []) if r]
+    os.makedirs('data', exist_ok=True)
+    with open(PAST_CACHE_FILE, 'w') as f:
+        json.dump(past_calendar_cached, f)
+    days_with_data = sum(1 for v in past_calendar_cached.values() if v)
+    print(f"  Past cache saved: {days_with_data} days with earnings data")
+
+past_earnings = {d: rows for d, rows in past_calendar_cached.items() if rows}
+print(f"  Past earnings: {len(past_earnings)} days with data")
+
 # ── 2. Earnings history ───────────────────────────────────────────────────────
 def parse_mcap(s):
     if not s: return 0
@@ -216,6 +251,7 @@ with open('template.html', 'r') as f:
     template = f.read()
 
 output = (template
+    .replace('__PAST_EARNINGS_JS__', json.dumps(past_earnings, ensure_ascii=False))
     .replace('__EARNINGS_JS__', json.dumps(earnings,   ensure_ascii=False))
     .replace('__HISTORY_JS__',  json.dumps(history,    ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))

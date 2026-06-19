@@ -49,6 +49,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .cell.today{background:var(--accent-bg)}.cell.today .cday{background:var(--accent);color:#fff;border-radius:50%}
 .cell.wknd{background:#fdfcfa}
 .cell.sel{box-shadow:inset 0 0 0 2px var(--accent)}
+.cell.has-past{cursor:pointer}.cell.has-past:hover{background:#faf9f7}
+.cp-past{background:#f0eeea;color:var(--faint);font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cday{width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--muted);margin-bottom:4px;flex-shrink:0}
 .chips{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden}
 .chip{font-size:10px;font-weight:600;padding:2px 5px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -212,6 +214,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 
 <script>
 const DATA = __EARNINGS_JS__;
+const PAST_DATA = __PAST_EARNINGS_JS__;
 const HISTORY = __HISTORY_JS__;
 const NEWS = __NEWS_JS__;
 const META = __META_JS__;
@@ -235,6 +238,10 @@ function fmtDateLong(iso){
 const SORTED = {};
 Object.keys(DATA).forEach(d => {
   SORTED[d] = [...DATA[d]].sort((a,b) => pmcap(b.marketCap) - pmcap(a.marketCap));
+});
+const PAST_SORTED = {};
+Object.keys(PAST_DATA).forEach(d => {
+  PAST_SORTED[d] = [...PAST_DATA[d]].sort((a,b) => pmcap(b.marketCap) - pmcap(a.marketCap));
 });
 
 // ── filters ───────────────────────────────────────────────────────────────────
@@ -270,9 +277,11 @@ function renderCal(){
     if(cur){ const mm=String(viewMonth+1).padStart(2,'0'), dd=String(day).padStart(2,'0'); iso=`${viewYear}-${mm}-${dd}`; }
     const rows  = iso ? filterRows(SORTED[iso]||[]) : [];
     const total = iso ? (SORTED[iso]||[]).length : 0;
-    const isToday=iso===TODAY_ISO, isSel=iso===selectedDate, hasData=rows.length>0;
+    const pastRows = (iso && iso < TODAY_ISO) ? (PAST_SORTED[iso]||[]) : [];
+    const isToday=iso===TODAY_ISO, isSel=iso===selectedDate, hasData=rows.length>0, hasPast=pastRows.length>0&&!hasData;
     let cls='cell';
-    if(!cur)cls+=' other'; if(isToday)cls+=' today'; if(isWknd)cls+=' wknd'; if(isSel)cls+=' sel'; if(hasData)cls+=' has-data';
+    if(!cur)cls+=' other'; if(isToday)cls+=' today'; if(isWknd)cls+=' wknd'; if(isSel)cls+=' sel';
+    if(hasData)cls+=' has-data'; else if(hasPast)cls+=' has-past';
 
     const chips = rows.slice(0,4).map(r => {
       const big = pmcap(r.marketCap)>=50e9;
@@ -281,14 +290,17 @@ function renderCal(){
     }).join('');
     const more = rows.length>4 ? `<div class="more">+${rows.length-4} more</div>` : '';
     const cnt  = total>0 ? `<div class="ccnt">${total}</div>` : '';
+    const pastChips = pastRows.slice(0,4).map(r => `<div class="cp-past" title="${esc(r.name||r.symbol)}">${esc(r.symbol)}</div>`).join('');
+    const pastMore  = pastRows.length>4 ? `<div class="more">+${pastRows.length-4} more</div>` : '';
+    const pastCnt   = pastRows.length>0 ? `<div class="ccnt" style="color:var(--faint)">${pastRows.length}</div>` : '';
     const click = iso ? `data-iso="${iso}"` : '';
-
-    return `<div class="${cls}" ${click}><div class="cday">${day}</div>${iso&&rows.length?`<div class="chips">${chips}${more}</div>`:''} ${cnt}</div>`;
+    const showChips = hasData ? `<div class="chips">${chips}${more}</div>` : hasPast ? `<div class="chips">${pastChips}${pastMore}</div>` : '';
+    return `<div class="${cls}" ${click}><div class="cday">${day}</div>${iso&&(hasData||hasPast)?showChips:''} ${hasData?cnt:hasPast?pastCnt:''}</div>`;
   }).join('');
 
   // attach click via event delegation — no inline onclick with string data
   document.getElementById('calGrid').onclick = e => {
-    const cell = e.target.closest('.cell.has-data');
+    const cell = e.target.closest('.cell.has-data, .cell.has-past');
     if(!cell) return;
     const iso = cell.dataset.iso;
     if(!iso) return;
@@ -299,32 +311,63 @@ function renderCal(){
 // ── day panel ─────────────────────────────────────────────────────────────────
 function openPanel(iso){
   selectedDate = iso; renderCal();
-  const rows = filterRows(SORTED[iso]||[]), all = SORTED[iso]||[];
+  const isPast = iso < TODAY_ISO;
+  const rows = isPast ? (PAST_SORTED[iso]||[]) : filterRows(SORTED[iso]||[]);
+  const all  = isPast ? (PAST_SORTED[iso]||[]) : (SORTED[iso]||[]);
   document.getElementById('dpTitle').textContent = fmtDateLong(iso);
-  document.getElementById('dpSub').textContent   = rows.length + (rows.length!==all.length?' of '+all.length:'') + ' companies reporting';
+  document.getElementById('dpSub').textContent   = rows.length + (rows.length!==all.length?' of '+all.length:'') + (isPast?' companies reported':' companies reporting');
+  document.querySelector('#dayPanel thead tr').innerHTML = isPast
+    ? '<th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th><th class="r" style="width:90px">Actual EPS</th><th class="r" style="width:90px">Est. EPS</th><th class="r" style="width:90px">Surprise</th>'
+    : '<th style="width:70px">Symbol</th><th>Company</th><th style="width:100px">When</th><th class="r" style="width:90px">EPS Est.</th><th class="r" style="width:90px">Last Yr</th><th class="r" style="width:100px">Market Cap</th><th style="width:80px">Quarter</th>';
 
-  document.getElementById('dpBody').innerHTML = !rows.length
-    ? `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--faint)">No earnings match filter.</td></tr>`
-    : rows.map(r => {
-        const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'TBD';
-        const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
-        const mc = pmcap(r.marketCap);
-        // Use data-sym attribute — no string escaping of names needed
-        return `<tr data-sym="${esc(r.symbol)}">
-          <td><span class="sym">${esc(r.symbol)}</span></td>
-          <td>
-            <div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div>
-            <div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div>
-          </td>
-          <td><span class="tbadge ${tc}">${tl}</span></td>
-          <td class="r"><span class="eps">${esc(r.epsForecast||'–')}</span></td>
-          <td class="r"><span style="color:var(--muted)">${esc(r.lastYearEPS||'–')}</span></td>
-          <td class="r"><span class="mcap">${fmtMcap(mc)}</span></td>
-          <td style="font-size:11px;color:var(--faint)">${esc(r.fiscalQuarterEnding||'')}</td>
-        </tr>`;
-      }).join('');
+  function getActual(sym) {
+    const h = HISTORY[sym]||[];
+    return h.find(q => { try { return new Date(q.dateReported).toISOString().split('T')[0]===iso; } catch{return false;} })||null;
+  }
 
-  // Row click via delegation — reads symbol from data attribute
+  if(isPast){
+    document.getElementById('dpBody').innerHTML = !rows.length
+      ? '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--faint)">No data for this date.</td></tr>'
+      : rows.map(r => {
+          const act     = getActual(r.symbol);
+          const actEps  = act ? act.eps : '–';
+          const estEps  = act ? (act.consensusForecast||r.epsForecast||'–') : (r.epsForecast||'–');
+          const surp    = act ? parseFloat(act.percentageSurprise)||0 : null;
+          const surpCls = surp==null?'':surp>0?'beat':surp<0?'miss':'';
+          const surpTxt = surp==null?'–':(surp>0?'+':'')+surp.toFixed(1)+'%';
+          const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'–';
+          const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
+          return `<tr data-sym="${esc(r.symbol)}">
+            <td><span class="sym">${esc(r.symbol)}</span></td>
+            <td><div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div><div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div></td>
+            <td><span class="tbadge ${tc}">${tl}</span></td>
+            <td class="r"><span class="eps">${actEps}</span></td>
+            <td class="r" style="color:var(--muted)">${estEps}</td>
+            <td class="r"><span class="${surpCls}">${surpTxt}</span></td>
+          </tr>`;
+        }).join('');
+  } else {
+    document.getElementById('dpBody').innerHTML = !rows.length
+      ? `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--faint)">No earnings match filter.</td></tr>`
+      : rows.map(r => {
+          const tl = r.time==='time-pre-market'?'Pre-market':r.time==='time-after-hours'?'After hours':'TBD';
+          const tc = r.time==='time-pre-market'?'tbp':r.time==='time-after-hours'?'tba':'tbt';
+          const mc = pmcap(r.marketCap);
+          return `<tr data-sym="${esc(r.symbol)}">
+            <td><span class="sym">${esc(r.symbol)}</span></td>
+            <td>
+              <div class="co"><a href="https://finance.yahoo.com/quote/${esc(r.symbol)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a></div>
+              <div class="co-q">${esc(r.fiscalQuarterEnding||'')}</div>
+            </td>
+            <td><span class="tbadge ${tc}">${tl}</span></td>
+            <td class="r"><span class="eps">${esc(r.epsForecast||'\u2013')}</span></td>
+            <td class="r"><span style="color:var(--muted)">${esc(r.lastYearEPS||'\u2013')}</span></td>
+            <td class="r"><span class="mcap">${fmtMcap(mc)}</span></td>
+            <td style="font-size:11px;color:var(--faint)">${esc(r.fiscalQuarterEnding||'')}</td>
+          </tr>`;
+        }).join('');
+  }
+
   document.getElementById('dpBody').onclick = e => {
     const row = e.target.closest('tr[data-sym]');
     if(!row) return;
