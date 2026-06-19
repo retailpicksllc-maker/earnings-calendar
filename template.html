@@ -402,8 +402,30 @@ function openStock(sym){
   document.body.style.overflow = 'hidden';
 }
 
+function getPastHistory(sym){
+  // Build history from PAST_DATA for tickers not in HISTORY
+  const entries = [];
+  Object.keys(PAST_DATA).sort().forEach(date => {
+    const row = (PAST_DATA[date]||[]).find(r => r.symbol===sym);
+    if(!row) return;
+    const eps = parseFloat((row.eps||'').replace(/[$,]/g,''));
+    const est = parseFloat((row.epsForecast||'').replace(/[$,]/g,''));
+    const surp = parseFloat(row.surprise);
+    if(isNaN(eps) && isNaN(est)) return;
+    entries.push({
+      fiscalQtrEnd: (row.fiscalQuarterEnding||date).replace('/',' '),
+      dateReported: date,
+      eps: isNaN(eps)?null:eps,
+      consensusForecast: isNaN(est)?'':String(est),
+      percentageSurprise: isNaN(surp)?'':String(surp),
+      revActual: null,
+    });
+  });
+  return entries.reverse();
+}
+
 function buildHistory(sym, m){
-  const hist = HISTORY[sym];
+  const hist = HISTORY[sym] && HISTORY[sym].length ? HISTORY[sym] : getPastHistory(sym);
   let html = '';
 
   // Upcoming card
