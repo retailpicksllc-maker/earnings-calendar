@@ -427,6 +427,23 @@ function mergeHist(sym){
   });
 }
 
+function _nearestRev(dict, fqe){
+  if(!dict||!fqe)return null;
+  if(dict[fqe]!=null)return dict[fqe];
+  try{
+    const target=new Date('01 '+fqe);
+    let bestClose=null,bestCloseDiff=999,bestPrior=null,bestPriorDiff=999;
+    for(const[k,v] of Object.entries(dict)){
+      const kd=new Date('01 '+k);
+      const diff=Math.abs((kd.getFullYear()-target.getFullYear())*12+(kd.getMonth()-target.getMonth()));
+      const signed=(target.getFullYear()-kd.getFullYear())*12+(target.getMonth()-kd.getMonth());
+      if(diff<=2&&diff<bestCloseDiff){bestCloseDiff=diff;bestClose=v;}
+      if(signed>0&&signed<=18&&signed<bestPriorDiff){bestPriorDiff=signed;bestPrior=v;}
+    }
+    return bestClose!=null?bestClose:bestPrior;
+  }catch{return null;}
+}
+
 function openStock(sym){
   selSym=sym;
   document.querySelectorAll('.logo-card').forEach(c=>c.classList.toggle('sel',c.querySelector('.logo-sym')?.textContent===sym));
@@ -489,23 +506,6 @@ function openStock(sym){
   document.getElementById('sdWhen').textContent=whenStr;
 
   // Populate REV/EPS card
-  // Try revActual from history; fall back to REVENUE cache nearest-quarter lookup
-  function _nearestRev(dict, fqe){
-    if(!dict||!fqe)return null;
-    if(dict[fqe]!=null)return dict[fqe];
-    try{
-      const target=new Date('01 '+fqe);
-      let bestClose=null,bestCloseDiff=999,bestPrior=null,bestPriorDiff=999;
-      for(const[k,v] of Object.entries(dict)){
-        const kd=new Date('01 '+k);
-        const diff=Math.abs((kd.getFullYear()-target.getFullYear())*12+(kd.getMonth()-target.getMonth()));
-        const signed=(target.getFullYear()-kd.getFullYear())*12+(target.getMonth()-kd.getMonth());
-        if(diff<=2&&diff<bestCloseDiff){bestCloseDiff=diff;bestClose=v;}
-        if(signed>0&&signed<=18&&signed<bestPriorDiff){bestPriorDiff=signed;bestPrior=v;}
-      }
-      return bestClose!=null?bestClose:bestPrior;
-    }catch{return null;}
-  }
   const _revDict=REVENUE[sym]||null;
   const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
   const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
@@ -554,12 +554,12 @@ function openStock(sym){
     <div class="met"><div class="met-lbl">EPS Est</div><div class="met-val">${m.eps?'$'+m.eps:'—'}</div></div>`;
 
   switchTab(0,document.querySelector('.sd-tab'));
-  buildEarnings(sym,hist,m);
+  buildEarnings(sym,hist,m,_revDict);
   buildNews(sym);
   fetchLivePrice(sym);
 }
 
-function buildEarnings(sym,hist,m){
+function buildEarnings(sym,hist,m,_revDict){
   const pane=document.getElementById('paneEarnings');
   let html='';
   if(m.date||m.eps){
