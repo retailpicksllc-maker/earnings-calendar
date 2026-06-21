@@ -418,7 +418,7 @@ function mergeHist(sym){
       consensusForecast:isNaN(est)?'':String(est),
       percentageSurprise:isNaN(surp)?'':String(surp),revActual:null});
   });
-  const all=[...cached,...extra];
+  const all=[...extra,...cached];
   const byQ={};
   all.forEach(q=>{if(q.fiscalQtrEnd)byQ[q.fiscalQtrEnd]=q;});
   return Object.values(byQ).sort((a,b)=>{
