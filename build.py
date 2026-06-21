@@ -405,16 +405,22 @@ def _fetch_one(ticker):
     qtrs = _yf_revenue(ticker)
     if not qtrs:
         qtrs = _sec_annual_fallback(ticker)
-    est = _yf_rev_estimate(ticker)
-    return ticker, qtrs, est
+    return ticker, qtrs
 
 rev_est_data = dict(rev_est_cache)
 with ThreadPoolExecutor(max_workers=8) as ex:
-    for ticker, qtrs, est in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
+    for ticker, qtrs in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
         if qtrs:
             revenue_data[ticker] = qtrs
+
+# Fetch revenue estimates for ALL rev_tickers not yet cached
+est_tickers = [t for t in rev_tickers if t not in rev_est_data]
+print(f"Fetching revenue estimates for {len(est_tickers)} tickers...")
+with ThreadPoolExecutor(max_workers=8) as ex:
+    for ticker, est in ex.map(lambda t: (t, _yf_rev_estimate(t)), est_tickers, timeout=300):
         if est:
             rev_est_data[ticker] = est
+print(f"  Revenue estimates collected: {len(rev_est_data)} tickers")
 
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
