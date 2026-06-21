@@ -94,23 +94,42 @@ def parse_mcap(s):
     try: return float(s.replace('$', '').replace(',', ''))
     except: return 0
 
-# All upcoming tickers + all recent past tickers (last 28 days) for revenue lookup
-top_tickers = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
+# top_tickers: for history fetch — keep lean (≤300)
+all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
+                 for rows in earnings.values() for r in rows]
+seen = set()
+top_tickers = []
+for mc, sym in sorted(all_rows_flat, reverse=True):
+    if sym and sym not in seen and mc > 1e9:
+        seen.add(sym)
+        top_tickers.append(sym)
+    if len(top_tickers) >= 200:
+        break
+past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
+                  for rows in past_earnings.values() for r in rows]
+for mc, sym in sorted(past_rows_flat, reverse=True):
+    if sym and sym not in seen and mc > 10e9:
+        seen.add(sym)
+        top_tickers.append(sym)
+    if len(top_tickers) >= 300:
+        break
+
+# rev_tickers: for revenue fetch — all recent calendar tickers (last 28 days + upcoming)
 recent_cutoff = (datetime.now() - timedelta(days=28)).strftime('%Y-%m-%d')
+rev_tickers = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
 for iso, rows in past_earnings.items():
     if iso >= recent_cutoff:
         for r in rows:
-            if r.get('symbol') and r['symbol'] not in top_tickers:
-                top_tickers.append(r['symbol'])
-# Also add top historical tickers by market cap (up to 300 more)
-past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
-                  for rows in past_earnings.values() for r in rows]
-seen_top = set(top_tickers)
+            sym = r.get('symbol','')
+            if sym and sym not in rev_tickers:
+                rev_tickers.append(sym)
+# Also include top historical tickers by mcap
+seen_rev = set(rev_tickers)
 for mc, sym in sorted(past_rows_flat, reverse=True):
-    if sym and sym not in seen_top and mc > 5e9:
-        seen_top.add(sym)
-        top_tickers.append(sym)
-    if len(top_tickers) >= 800:
+    if sym and sym not in seen_rev and mc > 5e9:
+        seen_rev.add(sym)
+        rev_tickers.append(sym)
+    if len(rev_tickers) >= 800:
         break
 
 # Load cached history (accumulates 3+ years over time)
@@ -272,7 +291,7 @@ def rev_is_stale(ticker):
     except:
         return False
 
-all_rev_tickers = list(set(top_tickers) | set(history.keys()))
+all_rev_tickers = list(set(rev_tickers) | set(history.keys()))
 tickers_needing_rev = [t for t in all_rev_tickers if rev_is_stale(t)]
 print(f"Fetching revenue for {len(tickers_needing_rev)} tickers via yfinance...")
 revenue_data = dict(revenue_cache)
