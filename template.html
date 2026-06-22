@@ -797,24 +797,29 @@ function setMkt(){
 }
 
 // Batch fetch live prices for all visible calendar tiles
+const _PROXY='https://corsproxy.io/?';
+function _yf(sym){return _PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d');}
 async function fetchCalendarPrices(){
   const spans=document.querySelectorAll('[id^="lp-"]');
   if(!spans.length)return;
   const syms=[...new Set([...spans].map(el=>el.id.slice(3)))];
   if(!syms.length)return;
-  try{
-    const r=await fetch('https://query1.finance.yahoo.com/v7/finance/quote?symbols='+syms.join(',')+'&fields=regularMarketPrice,regularMarketChangePercent',{headers:{Accept:'application/json'}});
-    const d=await r.json();
-    (d?.quoteResponse?.result||[]).forEach(q=>{
-      const el=document.getElementById('lp-'+q.symbol);
-      if(!el)return;
-      const p=q.regularMarketPrice;
-      const pct=q.regularMarketChangePercent;
-      if(p==null)return;
-      el.textContent='$'+p.toFixed(2);
-      el.style.color=pct==null?'var(--faint)':pct>=0?'var(--green)':'var(--red)';
-    });
-  }catch{}
+  const results=await Promise.allSettled(syms.map(s=>fetch(_yf(s)).then(r=>r.json()).then(d=>{
+    const meta=d?.chart?.result?.[0]?.meta;
+    const p=meta?.regularMarketPrice;
+    const prev=meta?.chartPreviousClose||meta?.previousClose;
+    const pct=p&&prev?(p-prev)/prev*100:null;
+    return{s,p,pct};
+  })));
+  results.forEach(res=>{
+    if(res.status!=='fulfilled')return;
+    const{s,p,pct}=res.value;
+    const el=document.getElementById('lp-'+s);
+    if(!el||p==null)return;
+    const up=pct==null||pct>=0;
+    el.innerHTML='$'+p.toFixed(2)+(pct!=null?'<br><span style="font-size:8px">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
+    el.style.color=pct==null?'var(--faint)':up?'var(--green)':'var(--red)';
+  });
 }
 
 // Live price for individual ticker
@@ -824,10 +829,7 @@ async function fetchLivePrice(sym){
   el.className='ec-price-loading';
   el.textContent='Loading price…';
   try{
-    // Yahoo Finance quote API (works browser-side, 15-min delayed outside market hours)
-    const r=await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`,
-      {headers:{Accept:'application/json'}});
+    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
     const d=await r.json();
     const meta=d?.chart?.result?.[0]?.meta;
     if(!meta){el.textContent='';return;}
@@ -845,15 +847,18 @@ async function fetchLivePrice(sym){
 // Prices
 async function fetchETF(sym,pId,cId){
   try{
-    const r=await fetch(`https://api.nasdaq.com/api/quote/${sym}/info?assetclass=etf`,
-      {headers:{Accept:'application/json','User-Agent':'Mozilla/5.0'}});
+    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=1d'));
     const d=await r.json();
-    const p=d?.data?.primaryData;
-    if(!p)return;
-    const up=!(p.netChange||'').startsWith('-');
-    document.getElementById(pId).textContent=p.lastSalePrice||'—';
+    const meta=d?.chart?.result?.[0]?.meta;
+    if(!meta)return;
+    const price=meta.regularMarketPrice||meta.previousClose;
+    const prev=meta.chartPreviousClose||meta.previousClose;
+    const chg=price&&prev?price-prev:null;
+    const pct=chg&&prev?(chg/prev*100):null;
+    const up=chg==null||chg>=0;
+    document.getElementById(pId).textContent=price?'$'+price.toFixed(2):'—';
     const el=document.getElementById(cId);
-    el.textContent=(p.netChange||'')+(p.percentageChange?' ('+p.percentageChange+')':'');
+    el.textContent=chg!=null?(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)':'—';
     el.className='price-chg '+(up?'up':'dn');
   }catch{}
 }
