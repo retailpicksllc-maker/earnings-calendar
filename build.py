@@ -610,59 +610,64 @@ print(f"  Fetching prices for {len(price_syms)} tickers…")
 try:
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor as _TPE
-    import pandas as _pd
-    # Batch download: one call for all tickers, includes pre/post market
-    try:
-        _df = yf.download(price_syms, period='2d', interval='1m', prepost=True,
-                          progress=False, auto_adjust=True, group_by='ticker')
-        _now_et = _pd.Timestamp.now(tz='America/New_York')
-        _today  = _now_et.date()
-        _reg_open  = _pd.Timestamp(_today).tz_localize('America/New_York').replace(hour=9,  minute=30)
-        _reg_close = _pd.Timestamp(_today).tz_localize('America/New_York').replace(hour=16, minute=0)
-        for sym in price_syms:
-            try:
-                cs = (_df[sym]['Close'] if sym in _df.columns.get_level_values(0)
-                      else _df['Close']) if isinstance(_df.columns, _pd.MultiIndex) else _df['Close']
-                cs = cs.dropna()
-                if len(cs) == 0: continue
-                # Regular close = last price during reg hours today
-                reg_rows = cs[(cs.index.date == _today) & (cs.index >= _reg_open) & (cs.index <= _reg_close)]
-                reg_p = float(reg_rows.iloc[-1]) if len(reg_rows) else float(cs[cs.index.date < _today].iloc[-1]) if len(cs[cs.index.date < _today]) else None
-                # Previous close = last price from yesterday
-                prev_rows = cs[cs.index.date < _today]
-                prev_p = float(prev_rows.iloc[-1]) if len(prev_rows) else None
-                # Extended hours = latest price outside reg hours today
-                ext_rows = cs[(cs.index.date == _today) & ((cs.index < _reg_open) | (cs.index > _reg_close))]
-                ext_p = float(ext_rows.iloc[-1]) if len(ext_rows) else None
-                ext_lbl = None
-                if ext_p:
-                    ext_lbl = 'AH' if ext_rows.index[-1] > _reg_close else 'PM'
-                # Base price for display: reg_p if available, else prev
-                base_p = reg_p or prev_p
-                if base_p is None: continue
-                pct = round((base_p - prev_p) / prev_p * 100, 2) if prev_p else None
-                ext_pct = round((ext_p - base_p) / base_p * 100, 2) if ext_p and base_p else None
-                prices[sym] = {
-                    'p': round(base_p, 2), 'pct': pct,
-                    'ext': round(ext_p, 2) if ext_p else None,
-                    'ext_pct': ext_pct, 'ext_lbl': ext_lbl
-                }
-            except: continue
-        print(f"  Got prices for {len(prices)} tickers (batch download)")
-    except Exception as _e:
-        print(f"  Batch download failed: {_e}, falling back to fast_info")
-        def _get_price_fast(sym):
-            try:
-                fi = yf.Ticker(sym).fast_info
-                p = fi.last_price; prev = fi.previous_close
-                if p is None: return sym, None
-                pct = round((p-prev)/prev*100,2) if prev else None
-                return sym, {'p':round(float(p),2),'pct':pct,'ext':None,'ext_pct':None,'ext_lbl':None}
-            except: return sym, None
-        with _TPE(max_workers=20) as ex:
-            for sym, data in ex.map(_get_price_fast, price_syms, timeout=60):
-                if data: prices[sym] = data
-        print(f"  Got prices for {len(prices)} tickers (fast_info fallback)")
+    # Single HTTP request to Yahoo Finance spark API — fast, includes pre/post market
+    import urllib.request as _ur, time as _time
+    _BATCH = 200
+    for _i in range(0, len(price_syms), _BATCH):
+        _batch = price_syms[_i:_i+_BATCH]
+        try:
+            _url = ('https://query1.finance.yahoo.com/v7/finance/spark?symbols='
+                    + ','.join(_batch) + '&range=1d&interval=1m&includePrePost=true')
+            _req = urllib.request.Request(_url, headers={'User-Agent':'Mozilla/5.0','Accept':'application/json'})
+            with _ur.urlopen(_req, timeout=30) as _r:
+                _data = json.loads(_r.read())
+            # Parse response
+            for _item in (_data.get('spark',{}).get('result') or []):
+                try:
+                    _sym = _item.get('symbol','')
+                    _resp = (_item.get('response') or [{}])[0]
+                    _meta = _resp.get('meta',{})
+                    _ts   = _resp.get('timestamp',[])
+                    _closes = (_resp.get('indicators',{}).get('quote',[{}]) or [{}])[0].get('close',[])
+                    if not _ts or not _closes: continue
+                    # Align ts and closes
+                    _pairs = [(t,c) for t,c in zip(_ts,_closes) if c is not None]
+                    if not _pairs: continue
+                    import datetime as _dt
+                    _ET = _dt.timezone((_dt.timedelta(hours=-4)))  # EDT
+                    _now_et = _dt.datetime.now(_ET)
+                    _today = _now_et.date()
+                    _reg_open  = _dt.datetime(_today.year,_today.month,_today.day,9,30,tzinfo=_ET).timestamp()
+                    _reg_close = _dt.datetime(_today.year,_today.month,_today.day,16,0, tzinfo=_ET).timestamp()
+                    # Regular close price
+                    _reg = [(t,c) for t,c in _pairs if _reg_open <= t <= _reg_close]
+                    _base_p = _reg[-1][1] if _reg else _pairs[-1][1]
+                    # Previous close from meta
+                    _prev_p = _meta.get('chartPreviousClose') or _meta.get('previousClose')
+                    _pct = round((_base_p - _prev_p) / _prev_p * 100, 2) if _prev_p else None
+                    # Extended hours: any bars after reg close
+                    _ext_pairs = [(t,c) for t,c in _pairs if t > _reg_close]
+                    _ext_p = _ext_pairs[-1][1] if _ext_pairs else None
+                    # Also check pre-market (before reg open)
+                    if not _ext_p:
+                        _pre_pairs = [(t,c) for t,c in _pairs if t < _reg_open]
+                        if _pre_pairs:
+                            _ext_p = _pre_pairs[-1][1]
+                            _ext_lbl = 'PM'
+                        else:
+                            _ext_lbl = None
+                    else:
+                        _ext_lbl = 'AH'
+                    _ext_pct = round((_ext_p - _base_p) / _base_p * 100, 2) if _ext_p and _base_p else None
+                    prices[_sym] = {
+                        'p': round(float(_base_p), 2), 'pct': _pct,
+                        'ext': round(float(_ext_p), 2) if _ext_p else None,
+                        'ext_pct': _ext_pct, 'ext_lbl': _ext_lbl
+                    }
+                except: continue
+        except Exception as _e:
+            print(f"  Spark batch {_i//200+1} failed: {_e}")
+    print(f"  Got prices for {len(prices)} tickers (spark API)")
 except Exception as e:
     print(f"  Price fetch failed: {e}")
 
