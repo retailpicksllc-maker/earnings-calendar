@@ -610,29 +610,59 @@ print(f"  Fetching prices for {len(price_syms)} tickers…")
 try:
     import yfinance as yf
     from concurrent.futures import ThreadPoolExecutor as _TPE
-    def _get_price(sym):
-        try:
-            t = yf.Ticker(sym)
-            info = t.info
-            p = info.get('regularMarketPrice') or info.get('currentPrice')
-            prev = info.get('regularMarketPreviousClose') or info.get('previousClose')
-            if p is None: return sym, None
-            pct = round((p - prev) / prev * 100, 2) if prev else None
-            post_p = info.get('postMarketPrice')
-            pre_p  = info.get('preMarketPrice')
-            ext_p  = post_p or pre_p
-            ext_lbl = 'AH' if post_p else ('PM' if pre_p else None)
-            ext_pct = round((ext_p - p) / p * 100, 2) if ext_p and p else None
-            return sym, {
-                'p': round(float(p), 2), 'pct': pct,
-                'ext': round(float(ext_p), 2) if ext_p else None,
-                'ext_pct': ext_pct, 'ext_lbl': ext_lbl
-            }
-        except: return sym, None
-    with _TPE(max_workers=20) as ex:
-        for sym, data in ex.map(_get_price, price_syms, timeout=60):
-            if data: prices[sym] = data
-    print(f"  Got prices for {len(prices)} tickers")
+    import pandas as _pd
+    # Batch download: one call for all tickers, includes pre/post market
+    try:
+        _df = yf.download(price_syms, period='2d', interval='1m', prepost=True,
+                          progress=False, auto_adjust=True, group_by='ticker')
+        _now_et = _pd.Timestamp.now(tz='America/New_York')
+        _today  = _now_et.date()
+        _reg_open  = _pd.Timestamp(_today).tz_localize('America/New_York').replace(hour=9,  minute=30)
+        _reg_close = _pd.Timestamp(_today).tz_localize('America/New_York').replace(hour=16, minute=0)
+        for sym in price_syms:
+            try:
+                cs = (_df[sym]['Close'] if sym in _df.columns.get_level_values(0)
+                      else _df['Close']) if isinstance(_df.columns, _pd.MultiIndex) else _df['Close']
+                cs = cs.dropna()
+                if len(cs) == 0: continue
+                # Regular close = last price during reg hours today
+                reg_rows = cs[(cs.index.date == _today) & (cs.index >= _reg_open) & (cs.index <= _reg_close)]
+                reg_p = float(reg_rows.iloc[-1]) if len(reg_rows) else float(cs[cs.index.date < _today].iloc[-1]) if len(cs[cs.index.date < _today]) else None
+                # Previous close = last price from yesterday
+                prev_rows = cs[cs.index.date < _today]
+                prev_p = float(prev_rows.iloc[-1]) if len(prev_rows) else None
+                # Extended hours = latest price outside reg hours today
+                ext_rows = cs[(cs.index.date == _today) & ((cs.index < _reg_open) | (cs.index > _reg_close))]
+                ext_p = float(ext_rows.iloc[-1]) if len(ext_rows) else None
+                ext_lbl = None
+                if ext_p:
+                    ext_lbl = 'AH' if ext_rows.index[-1] > _reg_close else 'PM'
+                # Base price for display: reg_p if available, else prev
+                base_p = reg_p or prev_p
+                if base_p is None: continue
+                pct = round((base_p - prev_p) / prev_p * 100, 2) if prev_p else None
+                ext_pct = round((ext_p - base_p) / base_p * 100, 2) if ext_p and base_p else None
+                prices[sym] = {
+                    'p': round(base_p, 2), 'pct': pct,
+                    'ext': round(ext_p, 2) if ext_p else None,
+                    'ext_pct': ext_pct, 'ext_lbl': ext_lbl
+                }
+            except: continue
+        print(f"  Got prices for {len(prices)} tickers (batch download)")
+    except Exception as _e:
+        print(f"  Batch download failed: {_e}, falling back to fast_info")
+        def _get_price_fast(sym):
+            try:
+                fi = yf.Ticker(sym).fast_info
+                p = fi.last_price; prev = fi.previous_close
+                if p is None: return sym, None
+                pct = round((p-prev)/prev*100,2) if prev else None
+                return sym, {'p':round(float(p),2),'pct':pct,'ext':None,'ext_pct':None,'ext_lbl':None}
+            except: return sym, None
+        with _TPE(max_workers=20) as ex:
+            for sym, data in ex.map(_get_price_fast, price_syms, timeout=60):
+                if data: prices[sym] = data
+        print(f"  Got prices for {len(prices)} tickers (fast_info fallback)")
 except Exception as e:
     print(f"  Price fetch failed: {e}")
 
