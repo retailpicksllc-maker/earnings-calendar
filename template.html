@@ -839,10 +839,20 @@ async function buildPriceChart(sym){
       data:{labels,datasets:[{data:prices,borderColor:color,backgroundColor:fillColor,borderWidth:2,pointRadius:0,fill:true,tension:0.2,spanGaps:true}]},
       options:{
         animation:false,responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false},tooltip:{
-          callbacks:{label:ctx=>'$'+ctx.parsed.y.toFixed(2)},
-          backgroundColor:'rgba(0,0,0,0.8)',titleColor:'#fff',bodyColor:'#fff',borderColor:'rgba(255,255,255,0.1)',borderWidth:1
-        }},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            callbacks:{
+              title:items=>items[0]?.label||'',
+              label:ctx=>'  $'+ctx.parsed.y.toFixed(2)
+            },
+            backgroundColor:'rgba(15,15,20,0.92)',titleColor:'rgba(255,255,255,0.9)',bodyColor:'rgba(255,255,255,0.85)',
+            borderColor:'rgba(255,255,255,0.12)',borderWidth:1,padding:8,
+            titleFont:{size:11,weight:'600'},bodyFont:{size:12,weight:'700'},
+            displayColors:false,caretSize:5
+          }
+        },
         scales:{
           x:{ticks:{color:'rgba(255,255,255,0.4)',maxTicksLimit:6,maxRotation:0,font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false}},
           y:{ticks:{color:'rgba(255,255,255,0.4)',callback:v=>'$'+v.toFixed(0),font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false},position:'right'}
