@@ -778,6 +778,34 @@ setMkt();
 renderWeek();
 fetchETF('SPY','pSPY','cSPY');
 fetchETF('QQQ','pQQQ','cQQQ');
+
+// ── Live updates ──────────────────────────────────────────────────────────────
+// 1. Header ETF prices refresh every 10s
+setInterval(()=>{
+  fetchETF('SPY','pSPY','cSPY');
+  fetchETF('QQQ','pQQQ','cQQQ');
+},10000);
+
+// 2. Selected stock price refresh every 5s
+let _livePriceSym=null,_livePriceTimer=null;
+function startLivePriceLoop(sym){
+  _livePriceSym=sym;
+  if(_livePriceTimer)clearInterval(_livePriceTimer);
+  _livePriceTimer=setInterval(()=>{if(_livePriceSym)fetchLivePrice(_livePriceSym);},5000);
+}
+
+// 3. Auto-reload when a new build is deployed (check every 2 min)
+let _pageEtag='';
+async function checkBuildUpdate(){
+  try{
+    const r=await fetch(location.pathname,{method:'HEAD',cache:'no-cache'});
+    const tag=r.headers.get('etag')||r.headers.get('last-modified')||'';
+    if(_pageEtag&&tag&&tag!==_pageEtag){location.reload();}
+    if(tag)_pageEtag=tag;
+  }catch{}
+}
+checkBuildUpdate();
+setInterval(checkBuildUpdate,120000);
 fetch('https://api.nasdaq.com/api/quote/BTCUSD/info?assetclass=cryptocurrency',
   {headers:{Accept:'application/json'}}).then(r=>r.json()).then(d=>{
   const p=d?.data?.primaryData;if(!p)return;
