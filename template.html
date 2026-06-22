@@ -518,16 +518,14 @@ function openStock(sym){
     const vals=Object.values(_revEstDict);
     return vals.length?vals[0]:null;
   }
-  // Find EPS estimate — exact match on quarter key, then first available value
+  // Find EPS estimate — exact match on quarter key only (no fallback; avoid showing wrong-quarter estimate)
   function _epsEst(fqe){
-    if(!_epsEstDict)return null;
-    if(fqe&&_epsEstDict[fqe]!=null)return _epsEstDict[fqe];
-    const vals=Object.values(_epsEstDict);
-    return vals.length?vals[0]:null;
+    if(!_epsEstDict||!fqe)return null;
+    return _epsEstDict[fqe]!=null?_epsEstDict[fqe]:null;
   }
   const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
   const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
-  const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):_epsEst(q0.fiscalQtrEnd);
+  const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):(!q0.eps||q0.eps===''?_epsEst(q0.fiscalQtrEnd):null);
   const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
   const revSurp=null; // no rev estimate available
 
