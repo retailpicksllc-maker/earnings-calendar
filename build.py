@@ -94,24 +94,32 @@ def parse_mcap(s):
     try: return float(s.replace('$', '').replace(',', ''))
     except: return 0
 
-# top_tickers: for history fetch — keep lean (≤300)
-all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
-                 for rows in earnings.values() for r in rows]
+# top_tickers: for history fetch — keep lean (≤400)
+# Priority 1: recent past reporters (last 14 days) with mc > 1B — always include
+recent_14d = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
 seen = set()
 top_tickers = []
+past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''), iso)
+                  for iso, rows in past_earnings.items() for r in rows]
+for mc, sym, iso in sorted(past_rows_flat, reverse=True):
+    if sym and sym not in seen and mc > 1e9 and iso >= recent_14d:
+        seen.add(sym)
+        top_tickers.append(sym)
+# Priority 2: top upcoming tickers by mcap
+all_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
+                 for rows in earnings.values() for r in rows]
 for mc, sym in sorted(all_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 1e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 200:
+    if len(top_tickers) >= 300:
         break
-past_rows_flat = [(parse_mcap(r.get('marketCap', '')), r.get('symbol', ''))
-                  for rows in past_earnings.values() for r in rows]
-for mc, sym in sorted(past_rows_flat, reverse=True):
+# Priority 3: historical past by mcap up to 400 total
+for mc, sym, iso in sorted(past_rows_flat, reverse=True):
     if sym and sym not in seen and mc > 10e9:
         seen.add(sym)
         top_tickers.append(sym)
-    if len(top_tickers) >= 300:
+    if len(top_tickers) >= 400:
         break
 
 # rev_tickers: for revenue fetch — all recent calendar tickers (last 28 days + upcoming)
