@@ -547,7 +547,7 @@ function openStock(sym){
 
   let rows='';
   if(isUpcoming){
-    const upEpsEst=m.eps?parseFloat(m.eps):null;
+    const upEpsEst=(s=>{if(!s)return null;const neg=s.includes('(');const v=parseFloat(s.replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v);})(m.eps);
     const upRevEst=_revEstDict?fmtM(Object.values(_revEstDict)[0]||null):null;
     const upDate=m.date||'';
     const upWhen=m.when||'';
