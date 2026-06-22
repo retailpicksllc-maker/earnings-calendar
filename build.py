@@ -73,8 +73,10 @@ while d >= cutoff:
         past_days_needed.append(d.strftime('%Y-%m-%d'))
     d -= timedelta(days=1)
 
-dates_to_fetch = [d for d in past_days_needed if d not in past_calendar_cached]
-print(f"Fetching {len(dates_to_fetch)} uncached past trading days...")
+# Always re-fetch last 5 trading days (catch same-day and late reports)
+recent_5d = set(past_days_needed[:5])
+dates_to_fetch = [d for d in past_days_needed if d not in past_calendar_cached or d in recent_5d]
+print(f"Fetching {len(dates_to_fetch)} past trading days ({len(recent_5d)} always-refresh + {len(dates_to_fetch)-len(recent_5d)} uncached)...")
 if dates_to_fetch:
     with ThreadPoolExecutor(max_workers=20) as ex:
         for date_str, rows in ex.map(fetch_earnings_day, dates_to_fetch, timeout=600):
