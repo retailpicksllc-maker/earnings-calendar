@@ -260,7 +260,7 @@ const META=__META_JS__;
 const BUILT_AT=__BUILT_AT__;
 
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(1)+'B':'$'+v.toFixed(0)+'M';}
+function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(2)+'B':'$'+v.toFixed(2)+'M';}
 function fmtMcap(v){if(!v||v<1e6)return'—';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';return'$'+(v/1e6).toFixed(0)+'M';}
 function pmcap(s){if(!s)return 0;try{return parseFloat(s.replace(/[$,]/g,''));}catch{return 0;}}
 function qLbl(s){if(!s)return'';const p=s.split(' ');const m=p[0],y=p[1]||'';const qi={Jan:4,Feb:4,Mar:1,Apr:1,May:2,Jun:2,Jul:2,Aug:3,Sep:3,Oct:3,Nov:4,Dec:4};return'Q'+(qi[m]||'?')+' '+(y?y.slice(2):'');}
