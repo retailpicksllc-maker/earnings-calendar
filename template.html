@@ -834,11 +834,25 @@ async function buildPriceChart(sym){
     if(typeof Chart==='undefined'){
       await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
     }
+    const crosshairPlugin={id:'crosshair',afterDraw(chart){
+      if(!chart.tooltip?._active?.length)return;
+      const x=chart.tooltip._active[0].element.x;
+      const {top,bottom}=chart.chartArea;
+      chart.ctx.save();
+      chart.ctx.beginPath();
+      chart.ctx.moveTo(x,top);
+      chart.ctx.lineTo(x,bottom);
+      chart.ctx.lineWidth=1;
+      chart.ctx.strokeStyle='rgba(255,255,255,0.25)';
+      chart.ctx.setLineDash([4,3]);
+      chart.ctx.stroke();
+      chart.ctx.restore();
+    }};
     _chartInst=new Chart(ctx,{
       type:'line',
-      data:{labels,datasets:[{data:prices,borderColor:color,backgroundColor:fillColor,borderWidth:2,pointRadius:0,fill:true,tension:0.2,spanGaps:true}]},
+      data:{labels,datasets:[{data:prices,borderColor:color,backgroundColor:fillColor,borderWidth:2,pointRadius:0,pointHoverRadius:4,pointHoverBackgroundColor:color,fill:true,tension:0.2,spanGaps:true}]},
       options:{
-        animation:false,responsive:true,maintainAspectRatio:false,
+        animation:false,hover:{animationDuration:0},responsive:true,maintainAspectRatio:false,
         interaction:{mode:'index',intersect:false},
         plugins:{
           legend:{display:false},
@@ -858,7 +872,7 @@ async function buildPriceChart(sym){
           y:{ticks:{color:'rgba(255,255,255,0.4)',callback:v=>'$'+v.toFixed(0),font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false},position:'right'}
         }
       }
-    });
+    },[crosshairPlugin]);
   }catch(e){pane.innerHTML='<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">Chart unavailable</div>';}
   _chartLoading='';
 }
