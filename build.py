@@ -601,15 +601,15 @@ for date_str, rows in earnings.items():
 
 
 # ── 4b. Fetch prices for all calendar tickers ────────────────────────────────
-price_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')}
-                | {r.get('symbol','') for rows in past_earnings.items() for r in (rows[1] if isinstance(rows,tuple) else rows) if r.get('symbol')}
-                | {'SPY','QQQ'})
-price_syms = [s for s in price_syms if s]
+# Priority tickers: current week calendar (must always have prices)
+priority_syms = sorted({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')} | {'SPY','QQQ'})
+# Secondary: historical tickers from past earnings
+secondary_syms = sorted({r.get('symbol','') for rows in past_earnings.values() for r in rows if r.get('symbol')} - set(priority_syms))
+price_syms = [s for s in priority_syms + secondary_syms if s]
 prices = {}
-print(f"  Fetching prices for {len(price_syms)} tickers…")
+print(f"  Fetching prices: {len(priority_syms)} priority + {len(secondary_syms)} secondary = {len(price_syms)} total…")
 try:
     import yfinance as yf
-    from concurrent.futures import ThreadPoolExecutor as _TPE
     from concurrent.futures import ThreadPoolExecutor as _TPE
 
     # fast_info for all tickers — uses quoteSummary (no crumb), includes post/pre market
@@ -640,10 +640,19 @@ try:
             }
         except: return sym, None
 
+    # Fetch priority tickers first with short timeout (guaranteed)
     with _TPE(max_workers=20) as ex:
-        for sym, data in ex.map(_get_price_fast, price_syms, timeout=60):
+        for sym, data in ex.map(_get_price_fast, priority_syms, timeout=90):
             if data: prices[sym] = data
-    print(f"  Got prices for {len(prices)} tickers (fast_info)")
+    print(f"  Priority prices: {len(prices)}/{len(priority_syms)}")
+    # Then fetch secondary tickers (best-effort)
+    try:
+        with _TPE(max_workers=20) as ex:
+            for sym, data in ex.map(_get_price_fast, secondary_syms, timeout=120):
+                if data: prices[sym] = data
+    except Exception as e2:
+        print(f"  Secondary prices partial ({len(prices)} total): {e2}")
+    print(f"  Got prices for {len(prices)} tickers total")
 
 except Exception as e:
     print(f"  Price fetch failed: {e}")
