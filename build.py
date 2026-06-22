@@ -209,7 +209,7 @@ def fetch_history(ticker):
 print(f"Fetching history for {len(top_tickers)} tickers...")
 history = {}
 with ThreadPoolExecutor(max_workers=10) as ex:
-    for ticker, rows in ex.map(fetch_history, top_tickers, timeout=120):
+    for ticker, rows in ex.map(fetch_history, top_tickers, timeout=300):
         if rows:
             history[ticker] = rows
 print(f"  Got history for {len(history)} tickers")
