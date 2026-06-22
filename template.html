@@ -542,34 +542,57 @@ function openStock(sym){
     if(!_epsEstDict||!fqe)return null;
     return _epsEstDict[fqe]!=null?_epsEstDict[fqe]:null;
   }
-  const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
-  const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
-  const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):(!q0.eps||q0.eps===''?_epsEst(q0.fiscalQtrEnd):null);
-  const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
-  const revSurp=null; // no rev estimate available
+  // Detect upcoming
+  const isUpcoming=Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
 
-  const revEstVal=_revEst(q0.fiscalQtrEnd);
-  const revSurpPct=(revAct&&revEstVal)?((revAct-revEstVal)/revEstVal*100):null;
   let rows='';
-  // REV row
-  rows+=`<div class="ec-row">
-    <div class="ec-metric">REV</div>
-    <div class="ec-est" style="color:var(--faint)">${revEstVal?fmtM(revEstVal):'—'}</div>
-    <div class="ec-actual">${revAct?fmtM(revAct):'—'}</div>
-    <div class="ec-surp ${revSurpPct!=null?(revSurpPct>0?'beat':'miss'):'flat'}">${revSurpPct!=null?(revSurpPct>0?'+':'')+revSurpPct.toFixed(1)+'%':'—'}</div>
-  </div>`;
-  rows+=`<div class="ec-row-divider"></div>`;
-  // EPS row
-  const epsColor=epsSurp!=null?(epsSurp>0?'var(--green)':'var(--red)'):'var(--muted)';
-  const epsSurpStr=epsSurp!=null?(epsSurp>0?'+':'')+epsSurp.toFixed(2)+'%':'—';
-  rows+=`<div class="ec-row">
-    <div class="ec-metric">EPS<span style="color:var(--faint);font-size:10px">*</span></div>
-    <div class="ec-est">${epsEst!=null?'$'+epsEst.toFixed(2)+' <span style=\'color:var(--faint);font-size:10px\'>(est)</span>':'—'}</div>
-    <div class="ec-actual">${epsAct!=null?'$'+epsAct.toFixed(2):'—'}</div>
-    <div class="ec-surp" style="color:${epsColor}">${epsSurpStr}</div>
-  </div>`;
-  document.getElementById('ecResults').innerHTML=rows;
-  document.getElementById('ecFootnote').textContent=epsAct!=null?'*Adjusted EPS vs consensus estimate':'';
+  if(isUpcoming){
+    const upEpsEst=m.eps?parseFloat(m.eps):null;
+    const upRevEst=_revEstDict?fmtM(Object.values(_revEstDict)[0]||null):null;
+    const upDate=m.date||'';
+    const upWhen=m.when||'';
+    rows+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 14px 10px">
+      <div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)">EPS Estimate</div>
+        <div style="font-size:22px;font-weight:800;color:var(--accent2);margin-top:3px">${upEpsEst!=null?'$'+upEpsEst.toFixed(2):'—'}</div>
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)">Rev Estimate</div>
+        <div style="font-size:22px;font-weight:800;color:var(--blue);margin-top:3px">${upRevEst&&upRevEst!=='—'?upRevEst:'—'}</div>
+      </div>
+    </div>
+    <div style="padding:0 14px 12px;font-size:11px;color:var(--muted)">${upDate?'Reports '+upDate+(upWhen?' · '+upWhen:''):''}</div>`;
+    document.getElementById('ecResults').innerHTML=rows;
+    document.getElementById('ecFootnote').textContent='';
+    const tabs=document.querySelectorAll('.ec-card-tab');
+    if(tabs[0])tabs[0].textContent='Estimates';
+  } else {
+    const revAct=q0.revActual||_nearestRev(_revDict, q0.fiscalQtrEnd)||null;
+    const epsAct=q0.eps!=null?parseFloat(q0.eps):null;
+    const epsEst=q0.consensusForecast!=null&&q0.consensusForecast!==''?parseFloat(q0.consensusForecast):(!q0.eps||q0.eps===''?_epsEst(q0.fiscalQtrEnd):null);
+    const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
+    const revEstVal=_revEst(q0.fiscalQtrEnd);
+    const revSurpPct=(revAct&&revEstVal)?((revAct-revEstVal)/revEstVal*100):null;
+    rows+=`<div class="ec-row">
+      <div class="ec-metric">REV</div>
+      <div class="ec-est" style="color:var(--faint)">${revEstVal?fmtM(revEstVal):'—'}</div>
+      <div class="ec-actual">${revAct?fmtM(revAct):'—'}</div>
+      <div class="ec-surp ${revSurpPct!=null?(revSurpPct>0?'beat':'miss'):'flat'}">${revSurpPct!=null?(revSurpPct>0?'+':'')+revSurpPct.toFixed(1)+'%':'—'}</div>
+    </div>`;
+    rows+=`<div class="ec-row-divider"></div>`;
+    const epsColor=epsSurp!=null?(epsSurp>0?'var(--green)':'var(--red)'):'var(--muted)';
+    const epsSurpStr=epsSurp!=null?(epsSurp>0?'+':'')+epsSurp.toFixed(2)+'%':'—';
+    rows+=`<div class="ec-row">
+      <div class="ec-metric">EPS<span style="color:var(--faint);font-size:10px">*</span></div>
+      <div class="ec-est">${epsEst!=null?'$'+epsEst.toFixed(2)+' <span style=\'color:var(--faint);font-size:10px\'>(est)</span>':'—'}</div>
+      <div class="ec-actual">${epsAct!=null?'$'+epsAct.toFixed(2):'—'}</div>
+      <div class="ec-surp" style="color:${epsColor}">${epsSurpStr}</div>
+    </div>`;
+    document.getElementById('ecResults').innerHTML=rows;
+    document.getElementById('ecFootnote').textContent=epsAct!=null?'*Adjusted EPS vs consensus estimate':'';
+    const tabs=document.querySelectorAll('.ec-card-tab');
+    if(tabs[0])tabs[0].textContent='Results';
+  }
 
   // Summary metrics strip
   const mc=pmcap((Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'')||
