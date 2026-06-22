@@ -214,6 +214,15 @@ with ThreadPoolExecutor(max_workers=10) as ex:
             history[ticker] = rows
 print(f"  Got history for {len(history)} tickers")
 
+# Pull in cached history for any upcoming/recent ticker not covered by top_tickers
+all_calendar_syms = {r.get('symbol','') for rows in earnings.values() for r in rows}
+all_calendar_syms |= {r.get('symbol','') for iso, rows in past_earnings.items()
+                      for r in rows if iso >= (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')}
+for sym in all_calendar_syms:
+    if sym and sym not in history and sym in cached_history and cached_history[sym]:
+        history[sym] = cached_history[sym]
+print(f"  After cache backfill: {len(history)} tickers")
+
 # Save updated cache back to repo so history accumulates over time
 os.makedirs('data', exist_ok=True)
 with open(CACHE_FILE, 'w') as f:
