@@ -734,7 +734,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   const BASE=PAD.t+cH;
   const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
   // Use "0q" forward estimate as the rightmost (upcoming) bar if available
-  const fwdEst=(_revEstDict&&_revEstDict['0q'])||0;
+  const fwdEst=(_revEstDict&&(Object.values(_revEstDict)[0]||0))||0;
   const maxRev=Math.max(...revVals,fwdEst,1);
   function rrect(x,y,w,h,r){
     if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
