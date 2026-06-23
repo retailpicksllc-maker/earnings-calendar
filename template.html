@@ -754,7 +754,7 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
     if(i>0){
       const v=maxRev*i/4;
       ctx.fillStyle='rgba(255,255,255,.22)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='right';
-      ctx.fillText(v>=1e9?(v/1e9).toFixed(1)+'B':v>=1e6?(v/1e6).toFixed(0)+'M':v.toFixed(0),PAD.l-4,y+3);
+      ctx.fillText(v>=1e3?(v/1e3).toFixed(1).replace(/\.0$/,'')+'B':v>=1?(v).toFixed(0)+'M':v.toFixed(0),PAD.l-4,y+3);
     }
   }
   const slotW=cW/N;
