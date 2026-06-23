@@ -131,6 +131,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sd-pane{display:none;overflow-y:auto;flex:1}.sd-pane.on{display:block}
 /* Chart */
 .chart-wrap{padding:8px 12px 6px}
+.price-range-bar{display:flex;gap:2px;padding:8px 12px 0}
+.prb{background:none;border:none;font-size:11px;font-weight:600;color:rgba(255,255,255,.4);cursor:pointer;padding:4px 7px;border-radius:6px;font-family:inherit;transition:color .15s,background .15s}
+.prb:hover{color:rgba(255,255,255,.75)}
+.prb.on{background:rgba(255,255,255,.12);color:#fff}
 .chart-section{margin-bottom:12px}
 .chart-section-title{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;padding:0 2px}
 .chart-section-dot{width:7px;height:7px;border-radius:2px;display:inline-block;flex-shrink:0}
@@ -888,35 +892,69 @@ function setMkt(){
   if(txt){txt.textContent=open?'Market Open':'Market Closed';}
 }
 
-// Price chart (3-month daily, corsproxy + Yahoo Finance)
-let _chartInst=null,_chartCanvas=null,_chartLoading='';
-async function buildPriceChart(sym){
+// Price chart with range selector
+let _chartInst=null,_chartLoading='',_chartSym2='',_chartRange='3mo';
+const _RANGES=[
+  {lbl:'1D',interval:'2m',range:'1d'},
+  {lbl:'1W',interval:'15m',range:'5d'},
+  {lbl:'1M',interval:'1d',range:'1mo'},
+  {lbl:'6M',interval:'1d',range:'6mo'},
+  {lbl:'YTD',interval:'1d',range:'ytd'},
+  {lbl:'1Y',interval:'1d',range:'1y'},
+  {lbl:'5Y',interval:'1wk',range:'5y'},
+  {lbl:'Max',interval:'1mo',range:'max'},
+];
+
+function buildPriceChart(sym){
+  _chartSym2=sym;
+  _chartRange=_chartRange||'3mo';
   const pane=document.getElementById('paneChart');
   if(!pane)return;
-  if(_chartLoading===sym)return;
-  _chartLoading=sym;
-  pane.innerHTML='<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">Loading…</div>';
+  // Build range bar + canvas shell if not already there for this sym
+  pane.innerHTML=`
+    <div class="price-range-bar" id="priceRangeBar">
+      ${_RANGES.map(r=>`<button class="prb${r.range===_chartRange?' on':''}" onclick="setPriceRange('${r.range}')">${r.lbl}</button>`).join('')}
+    </div>
+    <div style="padding:6px 12px 0;height:210px"><canvas id="priceChartCanvas"></canvas></div>
+    <div id="priceMeta" style="padding:2px 14px 6px;font-size:10px;color:var(--faint);text-align:right"></div>`;
+  fetchPriceChart(sym,_chartRange);
+}
+
+function setPriceRange(range){
+  _chartRange=range;
+  document.querySelectorAll('.prb').forEach(b=>b.classList.toggle('on',b.textContent===(_RANGES.find(r=>r.range===range)?.lbl||'')));
+  fetchPriceChart(_chartSym2,range);
+}
+
+async function fetchPriceChart(sym,range){
+  if(!sym)return;
+  const meta=document.getElementById('priceMeta');
+  if(meta)meta.textContent='Loading…';
+  const rc=_RANGES.find(r=>r.range===range)||_RANGES[2];
   try{
-    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval=1d&range=3mo&includePrePost=false'));
+    if(_chartInst){_chartInst.destroy();_chartInst=null;}
+    const r=await fetch(_PROXY+encodeURIComponent('https://query1.finance.yahoo.com/v8/finance/chart/'+sym+'?interval='+rc.interval+'&range='+rc.range+'&includePrePost=false'));
     const d=await r.json();
     const res=d?.chart?.result?.[0];
-    if(!res){pane.innerHTML='<div style="padding:20px;color:var(--faint);text-align:center">No chart data</div>';return;}
+    const canvasEl=document.getElementById('priceChartCanvas');
+    if(!res||!canvasEl){if(meta)meta.textContent='No data';return;}
     const ts=res.timestamp||[];
     const closes=res.indicators?.quote?.[0]?.close||[];
-    const highs=res.indicators?.quote?.[0]?.high||[];
-    const lows=res.indicators?.quote?.[0]?.low||[];
-    const labels=ts.map(t=>new Date(t*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'}));
-    const prices=closes.map((c,i)=>c??null);
-    const prev=prices[0]||0;
-    const last=prices.filter(p=>p!=null).slice(-1)[0]||0;
+    const isIntraday=rc.interval.includes('m')||rc.interval==='1h';
+    const labels=ts.map(t=>{
+      const dt=new Date(t*1000);
+      if(isIntraday)return dt.toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',hour12:true});
+      if(rc.interval==='1wk'||rc.interval==='1mo')return dt.toLocaleDateString('en-US',{month:'short',year:'2-digit'});
+      return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    });
+    const prices=closes.map(c=>c??null);
+    const validPrices=prices.filter(p=>p!=null);
+    const prev=validPrices[0]||0;
+    const last=validPrices.slice(-1)[0]||0;
     const up=last>=prev;
+    const pctChg=prev?((last-prev)/prev*100):0;
     const color=up?'rgba(34,197,94,1)':'rgba(239,68,68,1)';
-    const fillColor=up?'rgba(34,197,94,0.12)':'rgba(239,68,68,0.12)';
-    pane.innerHTML='<div style="padding:8px 12px 0"><canvas id="priceChartCanvas" height="180"></canvas></div>'+
-      '<div style="padding:4px 14px 8px;font-size:10px;color:var(--faint);text-align:right">3-month daily · '+sym+'</div>';
-    const ctx=document.getElementById('priceChartCanvas').getContext('2d');
-    if(_chartInst){_chartInst.destroy();_chartInst=null;}
-    // Load Chart.js from CDN if not already loaded
+    const fillColor=up?'rgba(34,197,94,0.10)':'rgba(239,68,68,0.10)';
     if(typeof Chart==='undefined'){
       await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s);});
     }
@@ -924,19 +962,14 @@ async function buildPriceChart(sym){
       if(!chart.tooltip?._active?.length)return;
       const x=chart.tooltip._active[0].element.x;
       const {top,bottom}=chart.chartArea;
-      chart.ctx.save();
-      chart.ctx.beginPath();
-      chart.ctx.moveTo(x,top);
-      chart.ctx.lineTo(x,bottom);
-      chart.ctx.lineWidth=1;
-      chart.ctx.strokeStyle='rgba(255,255,255,0.25)';
-      chart.ctx.setLineDash([4,3]);
-      chart.ctx.stroke();
-      chart.ctx.restore();
+      chart.ctx.save();chart.ctx.beginPath();chart.ctx.moveTo(x,top);chart.ctx.lineTo(x,bottom);
+      chart.ctx.lineWidth=1;chart.ctx.strokeStyle='rgba(255,255,255,0.25)';chart.ctx.setLineDash([4,3]);
+      chart.ctx.stroke();chart.ctx.restore();
     }};
-    _chartInst=new Chart(ctx,{
+    const ctx2=canvasEl.getContext('2d');
+    _chartInst=new Chart(ctx2,{
       type:'line',
-      data:{labels,datasets:[{data:prices,borderColor:color,backgroundColor:fillColor,borderWidth:2,pointRadius:0,pointHoverRadius:4,pointHoverBackgroundColor:color,fill:true,tension:0.2,spanGaps:true}]},
+      data:{labels,datasets:[{data:prices,borderColor:color,backgroundColor:fillColor,borderWidth:1.5,pointRadius:0,pointHoverRadius:4,pointHoverBackgroundColor:color,fill:true,tension:0.1,spanGaps:true}]},
       options:{
         animation:false,hover:{animationDuration:0},responsive:true,maintainAspectRatio:false,
         interaction:{mode:'index',intersect:false},
@@ -952,16 +985,16 @@ async function buildPriceChart(sym){
             titleFont:{size:11,weight:'600'},bodyFont:{size:12,weight:'700'},
             displayColors:false,caretSize:5
           }
-        }},
+        },
         scales:{
           x:{ticks:{color:'rgba(255,255,255,0.4)',maxTicksLimit:6,maxRotation:0,font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false}},
-          y:{ticks:{color:'rgba(255,255,255,0.4)',callback:v=>'$'+v.toFixed(0),font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false},position:'right'}
+          y:{ticks:{color:'rgba(255,255,255,0.4)',callback:v=>'$'+v.toLocaleString('en-US',{minimumFractionDigits:v<10?2:0,maximumFractionDigits:v<10?2:0}),font:{size:10}},grid:{color:'rgba(255,255,255,0.05)'},border:{display:false},position:'right'}
         }
       },
       plugins:[crosshairPlugin]
     });
-  }catch(e){pane.innerHTML='<div style="padding:20px;color:var(--faint);text-align:center;font-size:12px">Chart unavailable</div>';}
-  _chartLoading='';
+    if(meta)meta.textContent=sym+' · '+(up?'+':'')+pctChg.toFixed(2)+'% · '+rc.lbl;
+  }catch(e){const meta=document.getElementById('priceMeta');if(meta)meta.textContent='Chart unavailable';}
 }
 
 // Populate calendar tile prices from build-time PRICES data
