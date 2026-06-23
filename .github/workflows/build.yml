@@ -2,7 +2,7 @@ name: Build Earnings Calendar
 
 on:
   schedule:
-    - cron: '* * * * *'   # GitHub enforces 5-min minimum; external cron handles true 1-min
+    - cron: '* * * * *'   # GitHub runs ~every 5 min as floor
   workflow_dispatch:
 
 concurrency:
@@ -49,3 +49,16 @@ jobs:
           git add docs/index.html data/history_cache.json data/past_calendar_cache.json data/revenue_cache.json data/rev_est_cache.json data/eps_est_cache.json data/fmp_est_cache.json || true
           git diff --staged --quiet || git commit -m "Auto-update: $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push || (git pull --rebase origin main && git push)
+
+      - name: Trigger next build in 60s
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 60
+          curl -s -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/build.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "Next build triggered"
