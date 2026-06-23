@@ -733,8 +733,9 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   const gW=cW/N;
   const BASE=PAD.t+cH;
   const revVals=pts.map(q=>Math.max(q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0),0));
-  const revEstVals=pts.map(()=>0); // REV_EST has no historical keys
-  const maxRev=Math.max(...revVals,...revEstVals,1);
+  // Use "0q" forward estimate as the rightmost (upcoming) bar if available
+  const fwdEst=(_revEstDict&&_revEstDict['0q'])||0;
+  const maxRev=Math.max(...revVals,fwdEst,1);
   function rrect(x,y,w,h,r){
     if(h<1){h=1;r=0;}r=Math.min(r,w/2,h/2);
     ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);
@@ -752,22 +753,34 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
       ctx.fillText(v>=1e9?(v/1e9).toFixed(1)+'B':v>=1e6?(v/1e6).toFixed(0)+'M':v.toFixed(0),PAD.l-4,y+3);
     }
   }
+  const totalSlots=N+(fwdEst>0?1:0);
+  const slotW=cW/totalSlots;
   pts.forEach((q,i)=>{
-    const cx=PAD.l+i*gW+gW/2;
-    const bW=Math.max(gW*0.72,4);
+    const cx=PAD.l+i*slotW+slotW/2;
+    const bW=Math.max(slotW*0.72,4);
     const rev=revVals[i];
     // Single centered actual bar
     if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
     if(lbl){
-      const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
+      const show=totalSlots<=6||i===0||i===N-1||i%(Math.ceil(totalSlots/5))===0;
       if(show){ctx.fillStyle='rgba(255,255,255,.30)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-6);}
     }
   });
-  // Legend (no Est — no historical rev estimate data available)
+  // Forward estimate bar (rightmost slot)
+  if(fwdEst>0){
+    const cx=PAD.l+N*slotW+slotW/2;
+    const bW=Math.max(slotW*0.72,4);
+    const h=Math.max((fwdEst/maxRev)*cH,2);
+    ctx.fillStyle='rgba(156,163,175,0.9)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.25)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';
+    ctx.fillText('Est',cx,H-6);
+  }
+  // Legend
   ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
-  ctx.fillText('Revenue',PAD.l+10,PAD.t-4);
+  ctx.fillText('Act',PAD.l+10,PAD.t-4);
+  if(fwdEst>0){ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);ctx.fillText('Est',PAD.l+40,PAD.t-4);}
 }
 
 function drawEpsChart(sym,data){
