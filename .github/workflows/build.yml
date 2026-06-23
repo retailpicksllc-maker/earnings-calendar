@@ -2,15 +2,12 @@ name: Build Earnings Calendar
 
 on:
   schedule:
-    # Every hour 9 AM–11 PM UTC Mon–Fri (covers US market hours)
-    - cron: '0 9-23 * * 1-5'
-    # Every hour midnight–4 AM UTC Tue–Sat (covers US after-hours Mon–Fri)
-    - cron: '0 0-4 * * 2-6'
-    # Extra half-hour runs during pre-market (12-14 UTC = 8-10 AM ET) and after-hours (20-24 UTC = 4-8 PM ET)
-    - cron: '30 12-14 * * 1-5'
-    - cron: '30 20-23 * * 1-5'
-    - cron: '30 0-1 * * 2-6'
+    - cron: '* * * * *'   # every minute (GitHub enforces ~5-min minimum)
   workflow_dispatch:
+
+concurrency:
+  group: build
+  cancel-in-progress: true   # cancel stale run if a newer one starts
 
 jobs:
   build:
