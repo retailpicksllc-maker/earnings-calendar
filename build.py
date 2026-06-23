@@ -73,8 +73,13 @@ while d >= cutoff:
         past_days_needed.append(d.strftime('%Y-%m-%d'))
     d -= timedelta(days=1)
 
-# Always re-fetch last 5 trading days (catch same-day and late reports)
-recent_5d = set(past_days_needed[:5])
+# Always include TODAY so same-day reporters show actual results after they report
+today_str = today.strftime('%Y-%m-%d')
+if today.weekday() < 5:  # only weekdays
+    if today_str not in past_days_needed:
+        past_days_needed.insert(0, today_str)
+# Always re-fetch today + last 5 trading days (catch same-day and late reports)
+recent_5d = set([today_str] + past_days_needed[:5])
 dates_to_fetch = [d for d in past_days_needed if d not in past_calendar_cached or d in recent_5d]
 print(f"Fetching {len(dates_to_fetch)} past trading days ({len(recent_5d)} always-refresh + {len(dates_to_fetch)-len(recent_5d)} uncached)...")
 if dates_to_fetch:

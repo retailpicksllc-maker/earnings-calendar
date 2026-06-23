@@ -351,7 +351,7 @@ function fmtWR(dates){
 function changeWeek(d){wOff+=d;renderWeek();fetchCalendarPrices();}
 function goNow(){wOff=0;renderWeek();fetchCalendarPrices();}
 
-function getRows(iso){return iso<TODAY_ISO?(PAST_DATA[iso]||[]):(DATA[iso]||[]);}
+function getRows(iso){if(iso<TODAY_ISO)return PAST_DATA[iso]||[];if(iso===TODAY_ISO&&(PAST_DATA[iso]||[]).length)return PAST_DATA[iso];return DATA[iso]||[];}
 
 function renderWeek(){
   const dates=weekDates(wOff);
@@ -574,7 +574,7 @@ function openStock(sym){
     return _epsEstDict[fqe]!=null?_epsEstDict[fqe]:null;
   }
   // Detect upcoming
-  const isUpcoming=Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
+  const isUpcoming=!(PAST_DATA[TODAY_ISO]||[]).some(r=>r.symbol===sym)&&Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
 
   let rows='';
   if(isUpcoming){
