@@ -783,8 +783,10 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
   ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
   ctx.fillText('Est',PAD.l+10,PAD.t-4);
-  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
-  ctx.fillText('Act',PAD.l+40,PAD.t-4);
+  ctx.fillStyle='rgba(34,197,94,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
+  ctx.fillText('Beat',PAD.l+40,PAD.t-4);
+  ctx.fillStyle='rgba(239,68,68,.9)';ctx.fillRect(PAD.l+68,PAD.t-8,8,5);
+  ctx.fillText('Miss',PAD.l+78,PAD.t-4);
 }
 
 function drawEpsChart(sym,data){
