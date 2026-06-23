@@ -753,34 +753,31 @@ function drawRevChart(sym,data,_revDict,_revEstDict){
       ctx.fillText(v>=1e9?(v/1e9).toFixed(1)+'B':v>=1e6?(v/1e6).toFixed(0)+'M':v.toFixed(0),PAD.l-4,y+3);
     }
   }
-  const totalSlots=N+(fwdEst>0?1:0);
-  const slotW=cW/totalSlots;
+  const slotW=cW/N;
   pts.forEach((q,i)=>{
     const cx=PAD.l+i*slotW+slotW/2;
-    const bW=Math.max(slotW*0.72,4);
+    const grpW=Math.max(slotW*0.80,6);
+    const gap=Math.max(grpW*0.08,1);
+    const bW=Math.max((grpW-gap)/2,2);
+    const estX=cx-grpW/2;
+    const actX=estX+bW+gap;
     const rev=revVals[i];
-    // Single centered actual bar
-    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();}
+    // Est bar left (grey) — same forward estimate for every slot
+    if(fwdEst>0){const h=Math.max((fwdEst/maxRev)*cH,2);ctx.fillStyle='rgba(156,163,175,0.9)';rrect(estX,BASE-h,bW,h,2);ctx.fill();}
+    // Actual bar right (blue)
+    if(rev>0){const h=Math.max((rev/maxRev)*cH,2);ctx.fillStyle='rgba(59,130,246,.85)';rrect(actX,BASE-h,bW,h,2);ctx.fill();}
     const lbl=qLbl(q.fiscalQtrEnd||'');
     if(lbl){
-      const show=totalSlots<=6||i===0||i===N-1||i%(Math.ceil(totalSlots/5))===0;
+      const show=N<=6||i===0||i===N-1||i%(Math.ceil(N/5))===0;
       if(show){ctx.fillStyle='rgba(255,255,255,.30)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,cx,H-6);}
     }
   });
-  // Forward estimate bar (rightmost slot)
-  if(fwdEst>0){
-    const cx=PAD.l+N*slotW+slotW/2;
-    const bW=Math.max(slotW*0.72,4);
-    const h=Math.max((fwdEst/maxRev)*cH,2);
-    ctx.fillStyle='rgba(156,163,175,0.9)';rrect(cx-bW/2,BASE-h,bW,h,3);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.25)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='center';
-    ctx.fillText('Est',cx,H-6);
-  }
   // Legend
-  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
+  ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l,PAD.t-8,8,5);
   ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='8px -apple-system,sans-serif';ctx.textAlign='left';
-  ctx.fillText('Act',PAD.l+10,PAD.t-4);
-  if(fwdEst>0){ctx.fillStyle='rgba(156,163,175,0.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);ctx.fillText('Est',PAD.l+40,PAD.t-4);}
+  ctx.fillText('Est',PAD.l+10,PAD.t-4);
+  ctx.fillStyle='rgba(59,130,246,.9)';ctx.fillRect(PAD.l+30,PAD.t-8,8,5);
+  ctx.fillText('Act',PAD.l+40,PAD.t-4);
 }
 
 function drawEpsChart(sym,data){
@@ -798,7 +795,8 @@ function drawEpsChart(sym,data){
   const cW=W-PAD.l-PAD.r,cH=H-PAD.t-PAD.b;
   const gW=cW/N;
   const epsActuals=pts.map(q=>parseFloat(q.eps)||0);
-  const epsEsts=pts.map(q=>parseFloat(q.consensusForecast)||0);
+  const _epsEstFwd=(typeof EPS_EST!=='undefined'&&EPS_EST[sym])?(Object.values(EPS_EST[sym])[0]||0):0;
+  const epsEsts=pts.map(q=>parseFloat(q.consensusForecast)||_epsEstFwd);
   const allVals=[...epsActuals,...epsEsts];
   const minV=Math.min(...allVals,0);
   const maxV=Math.max(...allVals,0.01);
