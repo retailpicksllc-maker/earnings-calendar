@@ -232,6 +232,8 @@ import yfinance as yf
 REV_CACHE_FILE = 'data/revenue_cache.json'
 REV_EST_CACHE_FILE = 'data/rev_est_cache.json'
 EPS_EST_CACHE_FILE = 'data/eps_est_cache.json'
+FMP_EST_CACHE_FILE  = 'data/fmp_est_cache.json'
+FMP_API_KEY = os.environ.get('FMP_API_KEY', '')
 revenue_cache = {}
 rev_est_cache = {}
 eps_est_cache = {}
@@ -254,6 +256,14 @@ if os.path.exists(EPS_EST_CACHE_FILE):
         with open(EPS_EST_CACHE_FILE) as f:
             eps_est_cache = json.load(f)
         print(f"  Loaded EPS estimate cache: {len(eps_est_cache)} tickers")
+    except:
+        pass
+fmp_est_cache = {}
+if os.path.exists(FMP_EST_CACHE_FILE):
+    try:
+        with open(FMP_EST_CACHE_FILE) as f:
+            fmp_est_cache = json.load(f)
+        print(f"  Loaded FMP est cache: {len(fmp_est_cache)} tickers")
     except:
         pass
 
@@ -458,6 +468,27 @@ def _yf_eps_estimate(ticker):
         return result
     except: return {}
 
+def _fmp_rev_estimate(ticker):
+    """Fetch per-quarter revenue estimates from FMP stable/earnings (free, limit=5).
+    Returns {ISO_report_date: rev_est_in_millions} e.g. {'2026-03-19': 23487.7}."""
+    if not FMP_API_KEY:
+        return {}
+    try:
+        import urllib.request as _ur
+        url = f'https://financialmodelingprep.com/stable/earnings?symbol={ticker}&limit=5&apikey={FMP_API_KEY}'
+        req = _ur.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json'})
+        with _ur.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        result = {}
+        for q in (data or []):
+            date = q.get('date', '')
+            rev_est = q.get('revenueEstimated')
+            if date and rev_est and rev_est > 0:
+                result[date] = round(float(rev_est) / 1e6, 1)
+        return result
+    except:
+        return {}
+
 def _fetch_one(ticker):
     qtrs = _yf_revenue(ticker)
     if not qtrs:
@@ -489,6 +520,20 @@ with ThreadPoolExecutor(max_workers=8) as ex:
             eps_est_data[ticker] = est
 print(f"  EPS estimates collected: {len(eps_est_data)} tickers")
 
+# Fetch FMP per-quarter revenue estimates (keyed by report ISO date)
+fmp_est_data = dict(fmp_est_cache)
+if FMP_API_KEY:
+    fmp_fetch = [t for t in rev_tickers if t not in fmp_est_data]
+    print(f"Fetching FMP earnings estimates for {len(fmp_fetch)} tickers...")
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for ticker, est in ex.map(lambda t: (t, _fmp_rev_estimate(t)), fmp_fetch, timeout=300):
+            if est:
+                fmp_est_data[ticker] = est
+    print(f"  FMP estimates collected: {len(fmp_est_data)} tickers")
+else:
+    fmp_est_data = dict(fmp_est_cache)
+    print("  FMP_API_KEY not set — skipping FMP revenue estimates")
+
 # Merge revenue into history — nearest-quarter match with fallback
 # 1. Exact match  2. ±2 months (handles fiscal offset)  3. Most recent prior value (≤18 months)
 def _nearest_rev(rev_dict, fqe):
@@ -517,8 +562,19 @@ def _nearest_rev(rev_dict, fqe):
 
 for ticker, quarters in history.items():
     rev = revenue_data.get(ticker, {})
+    fmp = fmp_est_data.get(ticker, {})
     for q in quarters:
         q['revActual'] = _nearest_rev(rev, q.get('fiscalQtrEnd', ''))
+        # Match FMP estimate via dateReported "3/19/2026" -> "2026-03-19"
+        q['revEstimate'] = None
+        dr = q.get('dateReported', '')
+        if dr and fmp:
+            try:
+                iso = datetime.strptime(dr, '%m/%d/%Y').strftime('%Y-%m-%d')
+                if iso in fmp:
+                    q['revEstimate'] = fmp[iso]
+            except:
+                pass
 
 os.makedirs('data', exist_ok=True)
 with open(REV_CACHE_FILE, 'w') as f:
@@ -530,6 +586,10 @@ print(f"  Rev estimate cache saved: {len(rev_est_data)} tickers")
 with open(EPS_EST_CACHE_FILE, 'w') as f:
     json.dump(eps_est_data, f)
 print(f"  EPS estimate cache saved: {len(eps_est_data)} tickers")
+if FMP_API_KEY:
+    with open(FMP_EST_CACHE_FILE, 'w') as f:
+        json.dump(fmp_est_data, f)
+    print(f"  FMP estimate cache saved: {len(fmp_est_data)} tickers")
 
 
 # ── 3. News ───────────────────────────────────────────────────────────────────
