@@ -308,18 +308,28 @@ function logoHtml(sym,sz){
 // Week state
 let wOff=0;
 const TODAY=new Date();
-function _isoLocal(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-const TODAY_ISO=_isoLocal(TODAY);
+// All date logic uses Eastern Time to match market hours
+function _isoET(d){
+  const et=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+  const g=t=>et.find(p=>p.type===t).value;
+  return g('year')+'-'+g('month')+'-'+g('day');
+}
+function _isoLocal(d){return _isoET(d);}
+const TODAY_ISO=_isoET(TODAY);
 let selSym=null;
 const DAYS=['Mon','Tue','Wed','Thu','Fri'];
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function weekDates(off){
-  const d=new Date(TODAY);
-  const dow=d.getDay()||7;
-  d.setDate(d.getDate()-(dow-1)+off*7);
+  // Compute day-of-week in Eastern Time
+  const etParts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short'}).format(TODAY);
+  const dowMap={Sun:7,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+  const dow=dowMap[etParts]||1;
+  // Work with a noon-ET anchor to avoid DST edge cases
+  const anchor=new Date(TODAY_ISO+'T12:00:00');
+  anchor.setDate(anchor.getDate()-(dow-1)+off*7);
   const out=[];
-  for(let i=0;i<5;i++){const x=new Date(d);x.setDate(d.getDate()+i);out.push(_isoLocal(x));}
+  for(let i=0;i<5;i++){const x=new Date(anchor);x.setDate(anchor.getDate()+i);out.push(_isoLocal(x));}
   return out;
 }
 function fmtWR(dates){
