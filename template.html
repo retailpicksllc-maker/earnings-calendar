@@ -823,7 +823,7 @@ function drawEpsChart(sym,data){
       ctx.lineTo(x,zeroY);ctx.lineTo(x,top+r);
       ctx.quadraticCurveTo(x,top,x+r,top);ctx.closePath();
     } else {
-      const bot=top+Math.abs(h);
+      const bot=top;  // correct: toY(val) is the visual bottom of a negative bar
       ctx.beginPath();ctx.moveTo(x,zeroY);ctx.lineTo(x+w,zeroY);
       ctx.lineTo(x+w,bot-r);ctx.quadraticCurveTo(x+w,bot,x+w-r,bot);
       ctx.lineTo(x+r,bot);ctx.quadraticCurveTo(x,bot,x,bot-r);
