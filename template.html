@@ -235,11 +235,6 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
     <div class="week-grid" id="wGrid"></div>
   </div>
   <div class="right-panel" id="rightPanel">
-    <div class="rp-prices">
-      <div class="price-box"><div class="price-sym">SPY</div><div class="price-val" id="pSPY">—</div><div class="price-chg flat" id="cSPY">—</div></div>
-      <div class="price-box"><div class="price-sym">QQQ</div><div class="price-val" id="pQQQ">—</div><div class="price-chg flat" id="cQQQ">—</div></div>
-      <div class="price-box"><div class="price-sym">BTC</div><div class="price-val" id="pBTC">—</div><div class="price-chg flat" id="cBTC">—</div></div>
-    </div>
     <div id="feedPane" style="display:flex;flex-direction:column;flex:1">
       <div class="feed-hd"><span>Earnings Feed</span><span class="feed-sub" id="feedSub"></span></div>
       <div id="feedList"></div>
@@ -257,7 +252,6 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
           </div>
           <button class="ec-card-x" onclick="closeDetail()">&#10005;</button>
         </div>
-        <div id="ecPriceStrip" class="ec-price-loading">Loading price…</div>
         <div class="ec-card-tabs">
           <div class="ec-card-tab on">Results</div>
           <div class="ec-card-tab">Price Move <span class="pro-badge">Pro</span></div>
@@ -348,8 +342,8 @@ function fmtWR(dates){
   if(a.getMonth()===b.getMonth())return MONTHS[a.getMonth()]+' '+a.getDate()+'–'+b.getDate()+', '+b.getFullYear();
   return MONTHS[a.getMonth()]+' '+a.getDate()+' – '+MONTHS[b.getMonth()]+' '+b.getDate()+', '+b.getFullYear();
 }
-function changeWeek(d){wOff+=d;renderWeek();fetchCalendarPrices();}
-function goNow(){wOff=0;renderWeek();fetchCalendarPrices();}
+function changeWeek(d){wOff+=d;renderWeek();}
+function goNow(){wOff=0;renderWeek();}
 
 function getRows(iso){if(iso<TODAY_ISO)return PAST_DATA[iso]||[];if(iso===TODAY_ISO&&(PAST_DATA[iso]||[]).length)return PAST_DATA[iso];return DATA[iso]||[];}
 
@@ -648,7 +642,6 @@ function openStock(sym){
   switchTab(0,document.querySelector('.sd-tab'));
   buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict);
   buildNews(sym);
-  fetchLivePrice(sym);
 }
 
 function buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict){
@@ -958,6 +951,7 @@ function setPriceRange(range){
   fetchPriceChart(_chartSym2,range);
 }
 
+const _PROXY='https://corsproxy.io/?';
 async function fetchPriceChart(sym,range){
   if(!sym)return;
   const meta=document.getElementById('priceMeta');
@@ -1030,129 +1024,13 @@ async function fetchPriceChart(sym,range){
 }
 
 // Populate calendar tile prices from build-time PRICES data
-function fetchCalendarPrices(){
-  document.querySelectorAll('[id^="lp-"]').forEach(el=>{
-    const sym=el.id.slice(3);
-    const d=PRICES[sym];
-    if(!d||d.p==null)return;
-    const closeUp=d.pct==null||d.pct>=0;
-    const closeLine='$'+d.p.toFixed(2)+(d.pct!=null?' <span style="font-size:8px;color:'+(closeUp?'var(--green)':'var(--red)')+'"">'+(closeUp?'+':'')+d.pct.toFixed(2)+'%</span>':'');
-    if(d.ext!=null){
-      const up=d.ext_pct==null||d.ext_pct>=0;
-      el.innerHTML=closeLine+
-        '<br><span style="font-size:9px;font-weight:700;color:'+(up?'var(--green)':'var(--red)')+'">$'+d.ext.toFixed(2)+'</span>'+
-        ' <span style="font-size:8px;color:var(--faint)">After Hours</span>'+
-        (d.ext_pct!=null?'<span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'"> '+(up?'+':'')+d.ext_pct.toFixed(2)+'%</span>':'');
-      el.style.color='var(--text)';
-    } else {
-      el.innerHTML=closeLine;
-      el.style.color=closeUp?'var(--green)':'var(--red)';
-    }
-  });
-}
 
-const _PROXY='https://corsproxy.io/?';
 
-// ── Yahoo Finance v8/chart price fetch (the only working CORS endpoint) ──────
-async function _chartPriceOne(sym){
-  const yhSym=sym==='BTC'?'BTC-USD':sym;
-  try{
-    const r=await fetch(_PROXY+encodeURIComponent(
-      'https://query1.finance.yahoo.com/v8/finance/chart/'+yhSym+'?interval=5m&range=1d&includePrePost=true'
-    ));
-    const d=await r.json();
-    const res=d?.chart?.result?.[0];
-    const meta=res?.meta;
-    if(!meta||meta.regularMarketPrice==null)return null;
-    const timestamps=res?.timestamp||[];
-    const closes=res?.indicators?.quote?.[0]?.close||[];
-    const regEnd=meta.regularMarketTime;
-    const price=meta.regularMarketPrice;
-    const prev=meta.chartPreviousClose||meta.previousClose;
-    const chg=price&&prev?price-prev:null;
-    const pct=chg&&prev?(chg/prev*100):null;
-    // Post-market: last non-null close after market close time
-    let postPrice=null;
-    for(let i=timestamps.length-1;i>=0;i--){
-      if(timestamps[i]>regEnd&&closes[i]!=null){postPrice=closes[i];break;}
-    }
-    const postDiff=postPrice&&price?postPrice-price:null;
-    const postPct=postDiff&&price?(postDiff/price*100):null;
-    return{
-      price,chg,pct,
-      postPrice:(postDiff!=null&&Math.abs(postDiff)>0.01)?postPrice:null,
-      postPct:(postDiff!=null&&Math.abs(postDiff)>0.01)?postPct:null
-    };
-  }catch{return null;}
-}
 
-async function _chartPriceBatch(syms){
-  const entries=await Promise.allSettled(syms.map(s=>_chartPriceOne(s)));
-  const m={};
-  syms.forEach((s,i)=>{if(entries[i].status==='fulfilled'&&entries[i].value)m[s]=entries[i].value;});
-  return m;
-}
 
-// Build extended hours HTML
-function _extHtml(q){
-  if(!q||q.postPrice==null)return'';
-  const eu=q.postPct>=0;
-  return'<br><span style="font-size:9px">🌙</span> '+
-    '<span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+q.postPrice.toFixed(2)+'</span>'+
-    ' <span style="font-size:8px;color:var(--faint)">After Hours</span>'+
-    (q.postPct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+q.postPct.toFixed(2)+'%</span>':'');
-}
 
-// Live price strip for selected ticker
-async function fetchLivePrice(sym){
-  const el=document.getElementById('ecPriceStrip');
-  if(!el)return;
-  el.className='ec-price-loading';el.textContent='Loading price…';
-  const q=await _chartPriceOne(sym);
-  if(!q){el.textContent='';return;}
-  const{price,chg,pct,postPrice,postPct}=q;
-  const up=chg==null||chg>=0;
-  let extLine='';
-  if(postPrice!=null){
-    const eu=postPct>=0;
-    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 After Hours $${postPrice.toFixed(2)} ${eu?'+':''}${postPct!=null?postPct.toFixed(2)+'%':''}</span>`;
-  }
-  el.className='ec-price-strip';
-  el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
-    (pct!=null?`<span class="ec-price-chg ${up?'up':'dn'}">${up?'+':''}${(chg||0).toFixed(2)} (${up?'+':''}${pct.toFixed(2)}%)</span>`:'')+extLine+
-    `<span style="font-size:9px;font-weight:700;color:var(--green);margin-left:6px;opacity:0.85">● LIVE</span>`;
-}
 
-// Header index prices (SPY, QQQ, BTC)
-async function fetchETF(sym,pId,cId){
-  const q=await _chartPriceOne(sym);
-  if(!q)return;
-  const{price,chg,pct}=q;
-  const up=chg>=0;
-  const fmt=sym==='BTC'?(price>1000?'$'+Math.round(price).toLocaleString():'$'+price.toFixed(2)):'$'+price.toFixed(2);
-  document.getElementById(pId).textContent=fmt||'—';
-  const el=document.getElementById(cId);
-  el.textContent=chg!=null?(up?'+':'')+chg.toFixed(2)+' ('+(up?'+':'')+pct.toFixed(2)+'%)':'—';
-  el.className='price-chg '+(up?'up':'dn');
-}
 
-// Live calendar tile prices — parallel v8/chart calls
-async function fetchLiveCalendarPrices(){
-  const els=[...document.querySelectorAll('[id^="lp-"]')];
-  if(!els.length)return;
-  const syms=[...new Set(els.map(e=>e.id.slice(3)))];
-  const m=await _chartPriceBatch(syms);
-  els.forEach(el=>{
-    const sym=el.id.slice(3),q=m[sym];
-    if(!q)return;
-    const{price,chg,pct}=q;
-    const up=chg>=0;
-    const closeLine='$'+price.toFixed(2)+(pct!=null?' <span style="font-size:8px;color:'+(up?'var(--green)':'var(--red)')+'">'+(up?'+':'')+pct.toFixed(2)+'%</span>':'');
-    const ext=_extHtml(q);
-    el.innerHTML=closeLine+ext;
-    el.style.color=ext?'var(--text)':(up?'var(--green)':'var(--red)');
-  });
-}
 
 // Live clock — updates every minute
 function updateClock(){
@@ -1167,30 +1045,10 @@ updateClock();
 setInterval(updateClock,1000);
 setMkt();
 renderWeek();
-fetchCalendarPrices();
-fetchLiveCalendarPrices();
-fetchETF('SPY','pSPY','cSPY');
-fetchETF('QQQ','pQQQ','cQQQ');
-fetchETF('BTC','pBTC','cBTC');
 
 // ── Live updates ──────────────────────────────────────────────────────────────
-// 1. Header prices refresh every 10s
-setInterval(()=>{
-  fetchETF('SPY','pSPY','cSPY');
-  fetchETF('QQQ','pQQQ','cQQQ');
-  fetchETF('BTC','pBTC','cBTC');
-},10000);
 
-// 2. Calendar tile prices refresh every 30s
-setInterval(fetchLiveCalendarPrices,30000);
 
-// 3. Selected stock price refresh every 5s
-let _livePriceSym=null,_livePriceTimer=null;
-function startLivePriceLoop(sym){
-  _livePriceSym=sym;
-  if(_livePriceTimer)clearInterval(_livePriceTimer);
-  _livePriceTimer=setInterval(()=>{if(_livePriceSym)fetchLivePrice(_livePriceSym);},5000);
-}
 
 // 4. Auto-reload when a new build is deployed (check every 2 min)
 let _pageEtag='';
