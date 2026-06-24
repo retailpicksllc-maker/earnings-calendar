@@ -1099,7 +1099,7 @@ function _extHtml(q){
   const eu=q.postPct>=0;
   return'<br><span style="font-size:9px">🌙</span> '+
     '<span style="font-size:9px;font-weight:700;color:'+(eu?'var(--green)':'var(--red)')+'">$'+q.postPrice.toFixed(2)+'</span>'+
-    ' <span style="font-size:8px;color:var(--faint)">AH</span>'+
+    ' <span style="font-size:8px;color:var(--faint)">After Hours</span>'+
     (q.postPct!=null?'<span style="font-size:8px;color:'+(eu?'var(--green)':'var(--red)')+'"> '+(eu?'+':'')+q.postPct.toFixed(2)+'%</span>':'');
 }
 
@@ -1115,7 +1115,7 @@ async function fetchLivePrice(sym){
   let extLine='';
   if(postPrice!=null){
     const eu=postPct>=0;
-    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 AH $${postPrice.toFixed(2)} ${eu?'+':''}${postPct!=null?postPct.toFixed(2)+'%':''}</span>`;
+    extLine=`<span class="ec-price-chg ${eu?'up':'dn'}" style="font-size:11px;margin-left:8px">🌙 After Hours $${postPrice.toFixed(2)} ${eu?'+':''}${postPct!=null?postPct.toFixed(2)+'%':''}</span>`;
   }
   el.className='ec-price-strip';
   el.innerHTML=`<span class="ec-price-val">$${price.toFixed(2)}</span>`+
