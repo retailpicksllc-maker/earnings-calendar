@@ -203,6 +203,7 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
 
 .slide-card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;overflow:hidden;max-height:80vh;overflow-y:auto}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 </style>
 <script>
 // v10f3895 — force reload if browser has older cached version
@@ -263,7 +264,7 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
         <div class="ec-results" id="ecResults"></div>
         <div class="ec-footnote" id="ecFootnote"></div>
         <div class="ec-actions">
-          <button class="ec-play" onclick="openSlides(selSym)">&#9654;</button>
+          <button class="ec-play" onclick="openEarningsCall(selSym)">&#9654;</button>
           <button class="ec-act-btn ec-act-live" onclick="openSlides(selSym)">&#9646;&#9646; Slides</button>
           <button class="ec-act-btn ec-act-live" onclick="openReport(selSym)">&#9741; Report</button>
           <button class="ec-act-btn" style="opacity:.4;cursor:not-allowed">&#9741; Transcript</button>
@@ -1065,6 +1066,84 @@ async function checkBuildUpdate(){
 checkBuildUpdate();
 setInterval(checkBuildUpdate,120000);
 
+
+// ── Earnings Call Player ──────────────────────────────────────────────────
+function openEarningsCall(sym) {
+  if (!sym) return;
+  const m = META[sym] || {};
+
+  // Is company reporting today?
+  const todayRows = (DATA[TODAY_ISO] || []).filter(r => r.symbol === sym);
+  const isLiveToday = todayRows.length > 0;
+  const liveRow = todayRows[0] || {};
+  const liveTime = liveRow.time === 'time-pre-market' ? 'Before Open' :
+                   liveRow.time === 'time-after-hours' ? 'After Hours' : 'TBD';
+
+  // Most recent reported quarter
+  let lastIso = '';
+  for (const iso of Object.keys(PAST_DATA).sort().reverse()) {
+    if ((PAST_DATA[iso] || []).find(r => r.symbol === sym)) { lastIso = iso; break; }
+  }
+  const lastQ = lastIso ? (PAST_DATA[lastIso] || []).find(r => r.symbol === sym) : null;
+  const qLabel = lastQ ? (lastQ.fiscalQuarterEnding || lastIso) : '';
+
+  // Company name
+  let name = m.name || sym;
+  if (!name || name === sym) {
+    for (const iso of Object.keys(PAST_DATA)) {
+      const r = (PAST_DATA[iso] || []).find(r => r.symbol === sym);
+      if (r && r.name) { name = r.name; break; }
+    }
+  }
+
+  // Build URLs
+  const saUrl = `https://seekingalpha.com/symbol/${encodeURIComponent(sym)}/earnings/transcripts`;
+  const roicUrl = `https://roic.ai/company/${encodeURIComponent(sym)}/transcript`;
+  const irSearch = `https://www.google.com/search?q=${encodeURIComponent(sym + ' ' + name + ' investor relations earnings webcast')}`;
+  const yhUrl = `https://finance.yahoo.com/quote/${encodeURIComponent(sym)}/events/`;
+
+  const liveHtml = isLiveToday ? `
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:rgba(239,68,68,.12);border-bottom:1px solid rgba(239,68,68,.2)">
+      <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;animation:pulse 1.5s infinite;flex-shrink:0"></span>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#ef4444">Reports Today · ${liveTime}</div>
+        <div style="font-size:11px;color:var(--muted)">Live webcast may be available on IR page</div>
+      </div>
+    </div>` : '';
+
+  const lastQHtml = lastIso ? `
+    <div style="padding:10px 16px 4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)">
+      Most Recent: ${qLabel}
+    </div>` : '';
+
+  const links = [
+    { icon: '📄', label: 'Transcript', sub: 'Seeking Alpha', url: saUrl },
+    { icon: '🎧', label: 'Call Recording', sub: 'Roic.ai', url: roicUrl },
+    { icon: '📡', label: 'Live Webcast / IR', sub: 'Investor Relations', url: irSearch },
+    { icon: '📅', label: 'Events Calendar', sub: 'Yahoo Finance', url: yhUrl },
+  ].map(l => `
+    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--border);text-decoration:none;color:var(--text)">
+      <span style="font-size:22px;flex-shrink:0">${l.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:600">${l.label}</div>
+        <div style="font-size:11px;color:var(--muted)">${l.sub}</div>
+      </div>
+      <span style="color:var(--faint);font-size:14px">›</span>
+    </a>`).join('');
+
+  document.getElementById('callModalBody').innerHTML = `
+    ${liveHtml}
+    ${lastQHtml}
+    <div style="padding:10px 16px 6px;font-size:13px;font-weight:700">${sym} Earnings Call</div>
+    ${links}
+    <div style="padding:10px 16px 16px;font-size:10px;color:var(--faint)">Links open in a new tab. Transcript availability depends on the source.</div>
+  `;
+  document.getElementById('callModal').style.display = 'flex';
+}
+function closeCallModal() {
+  document.getElementById('callModal').style.display = 'none';
+}
+
 // ── Slides ────────────────────────────────────────────────────────────────
 let _slides=[], _slideIdx=0;
 
@@ -1427,6 +1506,15 @@ function closeReport(){
 }
 
 </script>
+
+
+<!-- ── Earnings Call Modal ───────────────────────────────────────────── -->
+<div id="callModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center" onclick="if(event.target===this)closeCallModal()">
+  <div style="width:min(380px,94vw);background:var(--surface);border:1px solid var(--border2);border-radius:16px;overflow:hidden;position:relative">
+    <button onclick="closeCallModal()" style="position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;z-index:1">&#10005;</button>
+    <div id="callModalBody"></div>
+  </div>
+</div>
 
 <!-- ── Slides Modal ──────────────────────────────────────────────────── -->
 <div id="slidesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;flex-direction:column;align-items:center;justify-content:center" onclick="if(event.target===this)closeSlides()">
