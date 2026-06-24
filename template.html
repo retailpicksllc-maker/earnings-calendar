@@ -118,6 +118,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ec-play{width:36px;height:36px;border-radius:50%;background:#fff;border:none;color:#000;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .ec-play:hover{background:#e5e7eb}
 .ec-act-btn{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.06);border:1px solid var(--border2);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:600;color:var(--muted);cursor:not-allowed;white-space:nowrap;font-family:inherit}
+.ec-act-live{cursor:pointer;color:var(--text)!important;border-color:var(--border2)!important}
+.ec-act-live:hover{background:rgba(255,255,255,.12)!important;border-color:var(--accent2)!important}
 .plus-badge{font-size:9px;font-weight:700;background:rgba(124,58,237,.25);color:var(--accent2);border-radius:4px;padding:1px 4px}
 .ec-share{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid var(--border2);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;margin-left:auto;flex-shrink:0}
 /* Summary metrics strip below card */
@@ -199,6 +201,8 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+.slide-card{background:var(--surface);border:1px solid var(--border2);border-radius:20px;overflow:hidden;max-height:80vh;overflow-y:auto}
 </style>
 <script>
 // v10f3895 — force reload if browser has older cached version
@@ -259,10 +263,10 @@ table.ht{width:100%;border-collapse:collapse;font-size:11px}
         <div class="ec-results" id="ecResults"></div>
         <div class="ec-footnote" id="ecFootnote"></div>
         <div class="ec-actions">
-          <button class="ec-play">&#9654;</button>
-          <button class="ec-act-btn">&#9646;&#9646; Slides <span class="plus-badge">Plus</span></button>
-          <button class="ec-act-btn">&#9741; Report <span class="plus-badge">Plus</span></button>
-          <button class="ec-act-btn">&#9741; Transcript <span class="plus-badge">Plus</span></button>
+          <button class="ec-play" onclick="openSlides(selSym)">&#9654;</button>
+          <button class="ec-act-btn ec-act-live" onclick="openSlides(selSym)">&#9646;&#9646; Slides</button>
+          <button class="ec-act-btn ec-act-live" onclick="openReport(selSym)">&#9741; Report</button>
+          <button class="ec-act-btn" style="opacity:.4;cursor:not-allowed">&#9741; Transcript</button>
           <button class="ec-share">&#8679;</button>
         </div>
       </div>
@@ -1060,6 +1064,388 @@ async function checkBuildUpdate(){
 }
 checkBuildUpdate();
 setInterval(checkBuildUpdate,120000);
+
+// ── Slides ────────────────────────────────────────────────────────────────
+let _slides=[], _slideIdx=0;
+
+function openSlides(sym){
+  if(!sym)return;
+  const m=META[sym]||{};
+  const hist=mergeHist(sym);
+  const _revDict=REVENUE[sym]||null;
+  const _revEstDict=REV_EST[sym]||null;
+  const _epsEstDict=EPS_EST[sym]||null;
+  const isUpcoming=!(PAST_DATA[TODAY_ISO]||[]).some(r=>r.symbol===sym)&&Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
+  const mc=(Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'';
+  const display=hist.slice(0,8);
+  const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
+  const tot=display.filter(q=>q.percentageSurprise!==''&&q.percentageSurprise!=null).length;
+  const epsEst=m.eps?(()=>{const neg=m.eps.includes('(');const v=parseFloat((m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
+  const revEstVal=_revEstDict?Object.values(_revEstDict)[0]||null:null;
+
+  // Find upcoming date/time
+  let upDate='',upTime='';
+  for(const iso of Object.keys(DATA)){
+    const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
+    if(row){upDate=iso;upTime=row.time==='time-pre-market'?'Before Open':row.time==='time-after-hours'?'After Hours':'TBD';break;}
+  }
+  if(!upDate&&m.date){upDate=m.date;upTime=m.when||'';}
+
+  // Company name
+  let name=m.name||'';
+  if(!name){for(const iso of Object.keys(PAST_DATA)){const row=(PAST_DATA[iso]||[]).find(r=>r.symbol===sym);if(row&&row.name){name=row.name;break;}}}
+  if(!name){for(const iso of Object.keys(DATA)){const row=(DATA[iso]||[]).find(r=>r.symbol===sym);if(row&&row.name){name=row.name;break;}}}
+
+  function logoHtml(size){
+    const bg=lcolor(sym);
+    const fb=`<div style="width:${size}px;height:${size}px;border-radius:${size*.2}px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:${size*.3}px;font-weight:800;color:#fff;flex-shrink:0">${(sym||'?').slice(0,2)}</div>`;
+    return `<div style="position:relative;width:${size}px;height:${size}px;flex-shrink:0">${fb}<img src="https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:${size*.2}px;background:#fff" onerror="this.style.display='none'"></div>`;
+  }
+
+  _slides=[];
+
+  // Slide 1 — Overview
+  _slides.push(`<div class="slide-card">
+    <div style="text-align:center;padding:28px 24px 20px">
+      <div style="display:flex;justify-content:center;margin-bottom:14px">${logoHtml(72)}</div>
+      <div style="font-size:28px;font-weight:900;letter-spacing:-.5px">${esc(sym)}</div>
+      ${name?`<div style="font-size:13px;color:var(--muted);margin-top:4px;max-width:300px;margin-left:auto;margin-right:auto">${esc(name)}</div>`:''}
+      ${upDate?`<div style="margin-top:14px;padding:8px 16px;background:var(--surface2);border-radius:10px;display:inline-flex;gap:8px;align-items:center;font-size:13px">
+        <span style="color:var(--muted)">Reports</span><strong>${esc(upDate)}</strong>${upTime?`<span style="color:var(--accent2);font-size:11px">${esc(upTime)}</span>`:''}
+      </div>`:''}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr${mc?'':''};gap:12px;padding:0 24px 24px">
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:6px">EPS Est</div>
+        <div style="font-size:26px;font-weight:900;color:var(--accent2)">${epsEst!=null?'$'+epsEst.toFixed(2):'—'}</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:6px">Rev Est</div>
+        <div style="font-size:26px;font-weight:900;color:var(--blue)">${revEstVal?fmtM(revEstVal):'—'}</div>
+      </div>
+    </div>
+    ${mc?`<div style="text-align:center;padding-bottom:20px;font-size:11px;color:var(--muted)">Market Cap: <strong>${esc(mc)}</strong></div>`:''}
+  </div>`);
+
+  // Slide 2 — Latest Quarter or Upcoming details
+  if(isUpcoming){
+    const prevQ=display[0]||{};
+    const prevEps=prevQ.eps!=null?parseFloat(prevQ.eps):null;
+    const prevRev=prevQ.revActual!=null?prevQ.revActual:_nearestRev(_revDict,prevQ.fiscalQtrEnd);
+    const growthEps=(epsEst!=null&&prevEps!=null)?(((epsEst-prevEps)/Math.abs(prevEps))*100):null;
+    const growthRev=(revEstVal&&prevRev)?(((revEstVal-prevRev)/Math.abs(prevRev))*100):null;
+    _slides.push(`<div class="slide-card">
+      <div style="padding:24px 24px 10px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);margin-bottom:12px">Upcoming Quarter</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:18px">${upDate?'Reports '+esc(upDate)+(upTime?' · '+esc(upTime):''):'Estimates'}</div>
+      </div>
+      <div style="padding:0 24px 24px;display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--surface2);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">EPS Estimate</div>
+            <div style="font-size:32px;font-weight:900;color:var(--accent2);margin-top:4px">${epsEst!=null?'$'+epsEst.toFixed(2):'—'}</div>
+            ${prevEps!=null?`<div style="font-size:11px;color:var(--muted);margin-top:2px">vs last: $${prevEps.toFixed(2)}</div>`:''}
+          </div>
+          ${growthEps!=null?`<div style="font-size:18px;font-weight:800;color:${growthEps>=0?'var(--green)':'var(--red)'}">${growthEps>=0?'+':''}${growthEps.toFixed(1)}%</div>`:''}
+        </div>
+        <div style="background:var(--surface2);border-radius:12px;padding:16px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Revenue Estimate</div>
+            <div style="font-size:32px;font-weight:900;color:var(--blue);margin-top:4px">${revEstVal?fmtM(revEstVal):'—'}</div>
+            ${prevRev?`<div style="font-size:11px;color:var(--muted);margin-top:2px">vs last: ${fmtM(prevRev)}</div>`:''}
+          </div>
+          ${growthRev!=null?`<div style="font-size:18px;font-weight:800;color:${growthRev>=0?'var(--green)':'var(--red)'}">${growthRev>=0?'+':''}${growthRev.toFixed(1)}%</div>`:''}
+        </div>
+      </div>
+    </div>`);
+  } else {
+    const q0=display[0]||{};
+    const epsA=q0.eps!=null?parseFloat(q0.eps):null;
+    const epsE=(()=>{const n=parseFloat(q0.consensusForecast);return q0.consensusForecast&&!isNaN(n)?n:(_epsEstDict&&_epsEstDict[q0.fiscalQtrEnd]!=null?_epsEstDict[q0.fiscalQtrEnd]:null);})();
+    const revA=q0.revActual!=null?q0.revActual:_nearestRev(_revDict,q0.fiscalQtrEnd);
+    const revE=q0.revEstimate!=null?q0.revEstimate:(_revEstDict&&Object.values(_revEstDict)[0]||null);
+    const epsSurp=q0.percentageSurprise!==''&&q0.percentageSurprise!=null?parseFloat(q0.percentageSurprise):null;
+    const epsBeat=epsSurp!=null&&epsSurp>0;
+    const revSurp=(revA&&revE)?(revA-revE)/revE*100:null;
+    const revBeat=revSurp!=null&&revSurp>0;
+    _slides.push(`<div class="slide-card">
+      <div style="padding:24px 24px 10px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);margin-bottom:8px">Latest Quarter</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:18px">${esc(q0.fiscalQtrEnd||'')}</div>
+      </div>
+      <div style="padding:0 24px 24px;display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--surface2);border-radius:12px;padding:16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">EPS</div>
+              <div style="font-size:32px;font-weight:900;margin-top:4px">${epsA!=null?'$'+epsA.toFixed(2):'—'}</div>
+              ${epsE!=null?`<div style="font-size:11px;color:var(--muted);margin-top:2px">Est: $${epsE.toFixed(2)}</div>`:''}
+            </div>
+            ${epsSurp!=null?`<div style="padding:6px 12px;border-radius:8px;background:${epsBeat?'var(--green-bg)':'var(--red-bg)'};color:${epsBeat?'var(--green)':'var(--red)'};font-size:14px;font-weight:800">${epsBeat?'BEAT':'MISS'}<br><span style="font-size:11px">${epsSurp>=0?'+':''}${epsSurp.toFixed(1)}%</span></div>`:''}
+          </div>
+        </div>
+        <div style="background:var(--surface2);border-radius:12px;padding:16px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Revenue</div>
+              <div style="font-size:32px;font-weight:900;color:var(--blue);margin-top:4px">${revA?fmtM(revA):'—'}</div>
+              ${revE?`<div style="font-size:11px;color:var(--muted);margin-top:2px">Est: ${fmtM(revE)}</div>`:''}
+            </div>
+            ${revSurp!=null?`<div style="padding:6px 12px;border-radius:8px;background:${revBeat?'var(--green-bg)':'var(--red-bg)'};color:${revBeat?'var(--green)':'var(--red)'};font-size:14px;font-weight:800">${revBeat?'BEAT':'MISS'}<br><span style="font-size:11px">${revSurp>=0?'+':''}${revSurp.toFixed(1)}%</span></div>`:''}
+          </div>
+        </div>
+      </div>
+    </div>`);
+  }
+
+  // Slide 3 — Beat/Miss History
+  if(display.length){
+    const dots=display.map(q=>{
+      const s=parseFloat(q.percentageSurprise);
+      const hasSurp=q.percentageSurprise!==''&&q.percentageSurprise!=null&&!isNaN(s);
+      const beat=hasSurp&&s>0;
+      const color=hasSurp?(beat?'var(--green)':'var(--red)'):'var(--faint)';
+      const epsA=q.eps!=null?parseFloat(q.eps):null;
+      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+        <div style="width:28px;height:28px;border-radius:50%;background:${color};opacity:${hasSurp?1:.3};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff">${hasSurp?(beat?'B':'M'):'?'}</div>
+        <div style="font-size:9px;color:var(--faint);text-align:center;line-height:1.2">${esc((q.fiscalQtrEnd||'').replace(/^20/,''))}</div>
+        ${hasSurp?`<div style="font-size:9px;color:${color};font-weight:700">${s>=0?'+':''}${s.toFixed(0)}%</div>`:''}
+      </div>`;
+    }).join('');
+    const streak=_calcStreak(display);
+    _slides.push(`<div class="slide-card">
+      <div style="padding:24px 24px 18px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent2);margin-bottom:8px">Beat / Miss History</div>
+        ${tot?`<div style="font-size:32px;font-weight:900;margin-bottom:4px">${beats}<span style="font-size:16px;color:var(--muted);font-weight:600"> / ${tot}</span></div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:18px">Quarters beat (${Math.round(beats/tot*100)}% rate)</div>`:''}
+        ${streak?`<div style="margin-bottom:16px;padding:8px 12px;border-radius:8px;background:${streak.beat?'var(--green-bg)':'var(--red-bg)'};color:${streak.beat?'var(--green)':'var(--red)'};font-size:12px;font-weight:700">${streak.n > 1 ? streak.n+' quarter streak: ' : ''}${streak.beat?'Beating estimates':'Missing estimates'}</div>`:''}
+      </div>
+      <div style="padding:0 16px 24px;display:flex;gap:4px">${dots}</div>
+    </div>`);
+  }
+
+  // Slide 4 — Revenue trend (bar chart as SVG)
+  const revPts=display.filter(q=>q.revActual!=null||_nearestRev(_revDict,q.fiscalQtrEnd)!=null);
+  if(revPts.length>=2){
+    const revVals=revPts.map(q=>q.revActual!=null?q.revActual:(_nearestRev(_revDict,q.fiscalQtrEnd)||0));
+    const maxR=Math.max(...revVals,1);
+    const bars=[...revPts].reverse().map((q,i)=>{
+      const v=revPts[revPts.length-1-i]===undefined?0:(revVals[revPts.length-1-i]||0);
+      const pct=v/maxR;
+      const h=Math.max(pct*120,2);
+      const y=130-h;
+      const bw=Math.max(340/revPts.length-8,8);
+      const x=20+i*(340/revPts.length);
+      return `<rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="3" fill="rgba(59,130,246,.7)"/>
+      <text x="${x+bw/2}" y="148" text-anchor="middle" fill="rgba(255,255,255,.35)" font-size="8" font-family="-apple-system,sans-serif">${esc((q.fiscalQtrEnd||'').replace(/^20/,''))}</text>
+      <text x="${x+bw/2}" y="${y-4}" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="8" font-family="-apple-system,sans-serif">${v>=1000?(v/1000).toFixed(1)+'B':v.toFixed(0)+'M'}</text>`;
+    }).join('');
+    _slides.push(`<div class="slide-card">
+      <div style="padding:24px 24px 10px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--blue);margin-bottom:8px">Revenue Trend</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:4px">Last ${revPts.length} Quarters</div>
+        ${revPts.length>=2?`<div style="font-size:12px;color:${(revVals[0]||0)>=(revVals[revPts.length-1]||1)?'var(--green)':'var(--red)'};margin-bottom:16px">${(revVals[0]||0)>=(revVals[revPts.length-1]||1)?'▲ Trending up':'▼ Trending down'}</div>`:''}
+      </div>
+      <div style="padding:0 16px 24px;overflow-x:auto">
+        <svg viewBox="0 0 380 160" style="width:100%;height:160px">${bars}</svg>
+      </div>
+    </div>`);
+  }
+
+  // Slide 5 — News
+  const arts=NEWS[sym]||[];
+  if(arts.length){
+    const items=arts.slice(0,4).map(a=>`<a href="${esc(a.link)}" target="_blank" rel="noopener" style="display:block;padding:12px;background:var(--surface2);border-radius:10px;border:1px solid var(--border);text-decoration:none;color:var(--text)">
+      <div style="font-size:13px;font-weight:600;line-height:1.4;margin-bottom:4px">${esc(a.title)}</div>
+      <div style="font-size:10px;color:var(--muted)">${esc(a.date)} · ${esc(a.time)}</div>
+    </a>`).join('');
+    _slides.push(`<div class="slide-card">
+      <div style="padding:24px 24px 14px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:8px">Latest News</div>
+        <div style="font-size:18px;font-weight:800;margin-bottom:16px">${esc(sym)} Headlines</div>
+      </div>
+      <div style="padding:0 16px 24px;display:flex;flex-direction:column;gap:8px">${items}</div>
+    </div>`);
+  }
+
+  _slideIdx=0;
+  _renderSlide();
+  const modal=document.getElementById('slidesModal');
+  modal.style.display='flex';
+  document.addEventListener('keydown',_slideKey);
+}
+
+function _calcStreak(display){
+  if(!display.length)return null;
+  const first=display[0];
+  const s=parseFloat(first.percentageSurprise);
+  if(first.percentageSurprise===''||first.percentageSurprise==null||isNaN(s))return null;
+  const beat=s>0;
+  let n=0;
+  for(const q of display){
+    const qs=parseFloat(q.percentageSurprise);
+    if(q.percentageSurprise===''||q.percentageSurprise==null||isNaN(qs))break;
+    if((qs>0)!==beat)break;
+    n++;
+  }
+  return{beat,n};
+}
+
+function _renderSlide(){
+  const track=document.getElementById('slidesTrack');
+  const dots=document.getElementById('slideDots');
+  const ctr=document.getElementById('slideCounter');
+  if(!track)return;
+  track.innerHTML=_slides[_slideIdx]||'';
+  if(ctr)ctr.textContent=(_slideIdx+1)+' / '+_slides.length;
+  if(dots){dots.innerHTML=_slides.map((_,i)=>`<div style="width:${i===_slideIdx?16:6}px;height:6px;border-radius:3px;background:${i===_slideIdx?'var(--accent2)':'rgba(255,255,255,.2)'};transition:all .2s;cursor:pointer" onclick="navSlideTo(${i})"></div>`).join('');}
+  const prev=document.getElementById('slidePrev');
+  const next=document.getElementById('slideNext');
+  if(prev)prev.style.opacity=_slideIdx===0?'.3':'1';
+  if(next)next.style.opacity=_slideIdx===_slides.length-1?'.3':'1';
+}
+
+function navSlide(dir){
+  _slideIdx=Math.max(0,Math.min(_slides.length-1,_slideIdx+dir));
+  _renderSlide();
+}
+function navSlideTo(i){_slideIdx=i;_renderSlide();}
+function closeSlides(){
+  document.getElementById('slidesModal').style.display='none';
+  document.removeEventListener('keydown',_slideKey);
+}
+function _slideKey(e){
+  if(e.key==='ArrowLeft')navSlide(-1);
+  else if(e.key==='ArrowRight')navSlide(1);
+  else if(e.key==='Escape')closeSlides();
+}
+
+// ── Report ────────────────────────────────────────────────────────────────
+function openReport(sym){
+  if(!sym)return;
+  const m=META[sym]||{};
+  const hist=mergeHist(sym);
+  const _revDict=REVENUE[sym]||null;
+  const _revEstDict=REV_EST[sym]||null;
+  const _epsEstDict=EPS_EST[sym]||null;
+  const display=hist.slice(0,8);
+  const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
+  const tot=display.filter(q=>q.percentageSurprise!==''&&q.percentageSurprise!=null).length;
+  const mc=(Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'';
+  const epsEst=m.eps?(()=>{const neg=m.eps.includes('(');const v=parseFloat((m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
+  const revEstVal=_revEstDict?Object.values(_revEstDict)[0]||null:null;
+  let upDate='',upTime='';
+  for(const iso of Object.keys(DATA)){
+    const row=(DATA[iso]||[]).find(r=>r.symbol===sym);
+    if(row){upDate=iso;upTime=row.time==='time-pre-market'?'Before Open':row.time==='time-after-hours'?'After Hours':'TBD';break;}
+  }
+  let name=m.name||'';
+  if(!name){for(const iso of Object.keys(PAST_DATA)){const row=(PAST_DATA[iso]||[]).find(r=>r.symbol===sym);if(row&&row.name){name=row.name;break;}}}
+
+  const revTTM=display.slice(0,4).reduce((s,q)=>{const rv=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);return s+(rv||0);},0)||0;
+  const epsTTM=display.slice(0,4).reduce((s,q)=>s+(parseFloat(q.eps)||0),0)||0;
+
+  // Table rows
+  const tableRows=display.map(q=>{
+    const epsA=q.eps!=null?parseFloat(q.eps):null;
+    const epsE=(()=>{const n=parseFloat(q.consensusForecast);return q.consensusForecast&&!isNaN(n)?n:(_epsEstDict&&_epsEstDict[q.fiscalQtrEnd]!=null?_epsEstDict[q.fiscalQtrEnd]:null);})();
+    const revA=q.revActual!=null?q.revActual:_nearestRev(_revDict,q.fiscalQtrEnd);
+    const surp=q.percentageSurprise!==''&&q.percentageSurprise!=null?parseFloat(q.percentageSurprise):null;
+    const beat=surp!=null&&surp>0;
+    return`<tr style="border-top:1px solid var(--border)">
+      <td style="padding:8px 12px;font-size:12px;font-weight:700">${esc(q.fiscalQtrEnd||'')}</td>
+      <td style="padding:8px 8px;font-size:12px;text-align:right;color:var(--accent2)">${epsA!=null?'$'+epsA.toFixed(2):'—'}</td>
+      <td style="padding:8px 8px;font-size:12px;text-align:right;color:var(--muted)">${epsE!=null?'$'+epsE.toFixed(2):'—'}</td>
+      <td style="padding:8px 8px;font-size:12px;text-align:center"><span style="padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${surp!=null?(beat?'var(--green-bg)':'var(--red-bg)'):'transparent'};color:${surp!=null?(beat?'var(--green)':'var(--red)'):'var(--faint)'}">${surp!=null?(beat?'▲ BEAT':'▼ MISS'):'—'}</span></td>
+      <td style="padding:8px 8px;font-size:12px;text-align:right;color:var(--blue)">${revA?fmtM(revA):'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const arts=NEWS[sym]||[];
+  const newsHtml=arts.slice(0,4).map(a=>`<div style="padding:10px 0;border-top:1px solid var(--border)">
+    <a href="${esc(a.link)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;font-size:13px;font-weight:600;line-height:1.4">${esc(a.title)}</a>
+    <div style="font-size:10px;color:var(--muted);margin-top:3px">${esc(a.date)} · ${esc(a.time)}</div>
+  </div>`).join('');
+
+  const bg=lcolor(sym);
+  document.getElementById('reportBody').innerHTML=`
+    <div style="background:linear-gradient(135deg,${bg}33,transparent);padding:24px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+        <div style="width:56px;height:56px;border-radius:12px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:#fff;position:relative;flex-shrink:0">
+          ${(sym||'?').slice(0,2)}
+          <img src="https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym)}?format=png" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;border-radius:12px;background:#fff" onerror="this.style.display='none'">
+        </div>
+        <div>
+          <div style="font-size:22px;font-weight:900">${esc(sym)}</div>
+          ${name?`<div style="font-size:12px;color:var(--muted)">${esc(name)}</div>`:''}
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+        ${upDate?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Reports</div><div style="font-size:13px;font-weight:700;margin-top:3px">${esc(upDate)}</div>${upTime?`<div style="font-size:10px;color:var(--accent2)">${esc(upTime)}</div>`:''}</div>`:''}
+        ${epsEst!=null?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">EPS Est</div><div style="font-size:18px;font-weight:900;color:var(--accent2);margin-top:3px">$${epsEst.toFixed(2)}</div></div>`:''}
+        ${revEstVal?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Rev Est</div><div style="font-size:18px;font-weight:900;color:var(--blue);margin-top:3px">${fmtM(revEstVal)}</div></div>`:''}
+        ${mc?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Mkt Cap</div><div style="font-size:13px;font-weight:700;margin-top:3px">${esc(mc)}</div></div>`:''}
+        ${epsTTM?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">EPS TTM</div><div style="font-size:18px;font-weight:900;color:var(--accent2);margin-top:3px">$${epsTTM.toFixed(2)}</div></div>`:''}
+        ${revTTM?`<div style="background:rgba(0,0,0,.3);border-radius:10px;padding:10px"><div style="font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.08em">Rev TTM</div><div style="font-size:18px;font-weight:900;color:var(--blue);margin-top:3px">${fmtM(revTTM)}</div></div>`:''}
+      </div>
+    </div>
+    ${tot?`<div style="padding:16px 24px 0">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px">EPS Beat Rate</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+        <div style="flex:1;height:8px;border-radius:4px;background:var(--surface2);overflow:hidden">
+          <div style="height:100%;border-radius:4px;background:var(--green);width:${Math.round(beats/tot*100)}%;transition:width .4s"></div>
+        </div>
+        <div style="font-size:16px;font-weight:800;color:${beats/tot>=.5?'var(--green)':'var(--red)'}">${Math.round(beats/tot*100)}%</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">Beat ${beats} of ${tot} reported quarters</div>
+    </div>`:''}
+    ${display.length?`<div style="padding:16px 0 0">
+      <div style="padding:0 24px 10px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Earnings History</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:var(--surface2)">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase">Quarter</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase">EPS</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase">Est</th>
+            <th style="padding:8px 8px;text-align:center;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase">Result</th>
+            <th style="padding:8px 8px;text-align:right;font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase">Revenue</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>`:''}
+    ${arts.length?`<div style="padding:16px 24px 20px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px">Recent News</div>
+      ${newsHtml}
+    </div>`:''}
+    <div style="padding:12px 24px;border-top:1px solid var(--border);font-size:10px;color:var(--faint);text-align:center">Built ${esc(BUILT_AT)}</div>
+  `;
+  document.getElementById('reportModal').style.display='flex';
+}
+function closeReport(){
+  document.getElementById('reportModal').style.display='none';
+}
+
 </script>
+
+<!-- ── Slides Modal ──────────────────────────────────────────────────── -->
+<div id="slidesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;flex-direction:column;align-items:center;justify-content:center" onclick="if(event.target===this)closeSlides()">
+  <div style="position:absolute;top:16px;right:16px;display:flex;gap:10px;align-items:center">
+    <span id="slideCounter" style="font-size:12px;color:var(--muted)"></span>
+    <button onclick="closeSlides()" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">&#10005;</button>
+  </div>
+  <button id="slidePrev" onclick="navSlide(-1)" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center">&#8249;</button>
+  <div id="slidesTrack" style="width:min(480px,92vw);overflow:hidden"></div>
+  <button id="slideNext" onclick="navSlide(1)" style="position:absolute;right:16px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center">&#8250;</button>
+  <div id="slideDots" style="position:absolute;bottom:24px;display:flex;gap:6px"></div>
+</div>
+
+<!-- ── Report Modal ──────────────────────────────────────────────────── -->
+<div id="reportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px" onclick="if(event.target===this)closeReport()">
+  <div style="width:min(560px,98vw);background:var(--surface);border:1px solid var(--border2);border-radius:16px;overflow:hidden;position:relative">
+    <button onclick="closeReport()" style="position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center">&#10005;</button>
+    <div id="reportBody"></div>
+  </div>
+</div>
 </body>
 </html>
