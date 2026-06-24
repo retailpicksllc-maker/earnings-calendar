@@ -378,13 +378,8 @@ function renderWeek(){
       const pre=rows.filter(r=>r.time==='time-pre-market');
       const aft=rows.filter(r=>r.time==='time-after-hours');
       const unk=rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours');
-      if(pre.length||aft.length){
-        const row=document.createElement('div');
-        row.style.cssText='display:flex;gap:4px;width:100%';
-        if(pre.length){const s=makeSection('☀️ Before Open',pre);s.style.flex='1';s.style.minWidth='0';row.appendChild(s);}
-        if(aft.length){const s=makeSection('🌙 After Close',aft);s.style.flex='1';s.style.minWidth='0';row.appendChild(s);}
-        col.appendChild(row);
-      }
+      if(pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
+      if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
       // Unconfirmed tickers hidden
     }
     grid.appendChild(col);
