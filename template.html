@@ -495,6 +495,13 @@ function mergeHist(sym){
       revActual:row.revenueActual||null,
       revEstimate:row.revenueEstimate||null});
   });
+  const all=[...extra,...cached];
+  const byQ={};
+  all.forEach(q=>{if(q.fiscalQtrEnd)byQ[q.fiscalQtrEnd]=q;});
+  return Object.values(byQ).sort((a,b)=>{
+    try{return new Date('01 '+b.fiscalQtrEnd)-new Date('01 '+a.fiscalQtrEnd);}catch{return 0;}
+  });
+}
 
 function _nearestRev(dict, fqe){
   if(!dict||!fqe)return null;
