@@ -213,8 +213,17 @@ with open(PAST_CACHE_FILE, 'w') as f:
     json.dump(past_calendar_cached, f)
 print(f"  Past cache saved")
 
-past_earnings = {d: rows for d, rows in past_calendar_cached.items() if d != '_chunks' and rows}
-print(f"  Past earnings: {len(past_earnings)} days with data")
+# Build upcoming symbol set — remove any ticker from past dates that belongs to upcoming
+upcoming_syms = {r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')}
+past_earnings = {}
+for d, rows in past_calendar_cached.items():
+    if d == '_chunks' or not rows:
+        continue
+    # Only keep rows that are NOT in upcoming earnings (avoids Finnhub pre-placing future reports on wrong past dates)
+    clean_rows = [r for r in rows if r.get('symbol','') not in upcoming_syms]
+    if clean_rows:
+        past_earnings[d] = clean_rows
+print(f"  Past earnings: {len(past_earnings)} days with data (filtered pre-placed upcoming tickers)")
 
 # ── 2. Earnings history ───────────────────────────────────────────────────────
 def parse_mcap(s):
