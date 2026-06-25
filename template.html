@@ -478,8 +478,8 @@ function mergeHist(sym){
     if(!row)return;
     // Support both NASDAQ fields (eps=actual, epsForecast=est) and Finnhub (epsActual=actual, eps=est)
     const epsAct = row.epsActual!=null ? parseFloat(row.epsActual)
-                 : parseFloat((row.eps||'').replace(/[$,]/g,''));
-    const epsEst = row.epsForecast!=null ? parseFloat((row.epsForecast||'').replace(/[$,]/g,''))
+                 : parseFloat(String(row.eps||'').replace(/[$,]/g,''));
+    const epsEst = row.epsForecast!=null ? parseFloat(String(row.epsForecast||'').replace(/[$,]/g,''))
                  : (row.epsActual!=null && row.eps!=null ? parseFloat(row.eps) : NaN);
     if(isNaN(epsAct)&&isNaN(epsEst))return;
     let surp=parseFloat(row.surprise);
@@ -1183,7 +1183,7 @@ function openSlides(sym){
   const display=hist.slice(0,8);
   const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
   const tot=display.filter(q=>q.percentageSurprise!==''&&q.percentageSurprise!=null).length;
-  const epsEst=m.eps?(()=>{const neg=m.eps.includes('(');const v=parseFloat((m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
+  const epsEst=m.eps?(()=>{const neg=String(m.eps).includes('(');const v=parseFloat(String(m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
   const revEstVal=_revEstDict?Object.values(_revEstDict)[0]||null:null;
 
   // Find upcoming date/time
@@ -1435,7 +1435,7 @@ function openReport(sym){
   const beats=display.filter(q=>parseFloat(q.percentageSurprise)>0).length;
   const tot=display.filter(q=>q.percentageSurprise!==''&&q.percentageSurprise!=null).length;
   const mc=(Object.values(PAST_DATA).flatMap(r=>r).find(r=>r.symbol===sym)||Object.values(DATA).flatMap(r=>r).find(r=>r.symbol===sym)||{}).marketCap||'';
-  const epsEst=m.eps?(()=>{const neg=m.eps.includes('(');const v=parseFloat((m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
+  const epsEst=m.eps?(()=>{const neg=String(m.eps).includes('(');const v=parseFloat(String(m.eps||'').replace(/[^0-9.]/g,''));return isNaN(v)?null:(neg?-v:v)})():null;
   const revEstVal=_revEstDict?Object.values(_revEstDict)[0]||null:null;
   let upDate='',upTime='';
   for(const iso of Object.keys(DATA)){
