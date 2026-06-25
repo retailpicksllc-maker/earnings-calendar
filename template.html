@@ -373,9 +373,10 @@ function renderWeek(){
       const sorted=[...rows].sort((a,b)=>pmcap(b.marketCap)-pmcap(a.marketCap));
       col.appendChild(makeSection('📋 Reported',sorted));
     } else {
-      const pre=rows.filter(r=>r.time==='time-pre-market');
-      const aft=rows.filter(r=>r.time==='time-after-hours');
-      const unk=rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours');
+      const sortMC=(a,b)=>pmcap(b.marketCap)-pmcap(a.marketCap);
+      const pre=[...rows.filter(r=>r.time==='time-pre-market')].sort(sortMC);
+      const aft=[...rows.filter(r=>r.time==='time-after-hours')].sort(sortMC);
+      const unk=[...rows.filter(r=>r.time!=='time-pre-market'&&r.time!=='time-after-hours')].sort(sortMC);
       if(pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
       if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
       // Unconfirmed tickers hidden
