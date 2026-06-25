@@ -793,6 +793,37 @@ try:
 except Exception as e:
     print(f"WARN mktcap cache save: {e}")
 
+# ── 4b. Fetch live prices for calendar tickers ───────────────────────────────
+price_data = {}
+price_syms = list({r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol')})
+# Also add recent past tickers (last 3 days)
+recent3 = (today - timedelta(days=3)).strftime('%Y-%m-%d')
+for iso, rows in past_earnings.items():
+    if iso >= recent3:
+        for r in rows:
+            sym = r.get('symbol','')
+            if sym and sym not in price_syms:
+                price_syms.append(sym)
+
+def fetch_price(sym):
+    try:
+        url = f'https://finnhub.io/api/v1/quote?symbol={sym}&token={FINNHUB_KEY}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            d = json.loads(r.read())
+        if d and d.get('c'):
+            return sym, {'c': round(d['c'], 2), 'dp': round(d.get('dp', 0), 2), 'pc': round(d.get('pc', 0), 2)}
+    except: pass
+    return sym, None
+
+if FINNHUB_KEY and price_syms:
+    print(f"Fetching live prices for {len(price_syms)} tickers...")
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        for sym, p in ex.map(fetch_price, price_syms[:150], timeout=60):
+            if p:
+                price_data[sym] = p
+    print(f"  Got prices for {len(price_data)} tickers")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
@@ -808,8 +839,8 @@ output = (template
     .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
+    .replace('__PRICES_JS__',     json.dumps(price_data, ensure_ascii=False))
     .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
-    .replace('__FINNHUB_KEY__',  json.dumps(FINNHUB_KEY))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
