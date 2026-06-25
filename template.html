@@ -556,7 +556,6 @@ function _nearestRev(dict, fqe){
 function openStock(sym){
   selSym=sym;
   document.querySelectorAll('.logo-card').forEach(c=>c.classList.toggle('sel',c.querySelector('.logo-sym')?.textContent===sym));
-  setTimeout(()=>fetchLivePrice(sym),50);
   document.getElementById('feedPane').style.display='none';
   const sd=document.getElementById('sdPane');
   sd.style.display='flex';
@@ -704,6 +703,7 @@ function openStock(sym){
     <div class="met"><div class="met-lbl">Beat Rate</div><div class="met-val ${beatPct!=null?(beatPct>=50?'up':'dn'):''}">${beatPct!=null?beatPct+'%':'—'}</div></div>
     <div class="met"><div class="met-lbl">Quarters</div><div class="met-val">${totQ.length||'—'}</div></div>
     <div class="met"><div class="met-lbl">EPS Est</div><div class="met-val">${m.eps?'$'+m.eps:'—'}</div></div>`;
+  fetchLivePrice(sym);
 
   _chartSym=sym;
   switchTab(0,document.querySelector('.sd-tab'));
