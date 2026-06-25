@@ -299,9 +299,21 @@ const BUILT_AT=__BUILT_AT__;const FH_KEY=__FINNHUB_KEY__;
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function fmtM(v){if(v==null||v===0)return'—';return v>=1000?'$'+(v/1000).toFixed(2)+'B':'$'+v.toFixed(2)+'M';}
 function fmtMcap(v){if(!v||v<1e6)return'—';if(v>=1e12)return'$'+(v/1e12).toFixed(2)+'T';if(v>=1e9)return'$'+(v/1e9).toFixed(1)+'B';return'$'+(v/1e6).toFixed(0)+'M';}
+function mktSession(){
+  const now=new Date();
+  const et=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const h=et.getHours(),m=et.getMinutes(),day=et.getDay();
+  if(day===0||day===6)return'closed';
+  const mins=h*60+m;
+  if(mins>=240&&mins<570)return'pre';    // 4am-9:30am
+  if(mins>=570&&mins<960)return'open';   // 9:30am-4pm
+  if(mins>=960&&mins<1200)return'after'; // 4pm-8pm
+  return'closed';
+}
 function fetchLivePrice(sym){
   if(!FH_KEY||!sym)return;
   const el=document.getElementById('live-price-'+sym);
+  const lbl=document.getElementById('live-price-lbl-'+sym);
   if(!el)return;
   el.textContent='…';
   fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${FH_KEY}`)
@@ -310,7 +322,13 @@ function fetchLivePrice(sym){
       if(!d||!d.c)return;
       const p=d.c,chg=d.dp;
       const sign=chg>=0?'+':'';
-      const col=chg>=0?'var(--accent2)':'var(--red)';el.innerHTML='$'+p.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+chg.toFixed(2)+'%</span>';
+      const col=chg>=0?'var(--accent2)':'var(--red)';
+      el.innerHTML='$'+p.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+chg.toFixed(2)+'%</span>';
+      if(lbl){
+        const s=mktSession();
+        lbl.textContent=s==='pre'?'Pre-Mkt':s==='after'?'After Hrs':s==='open'?'Live Price':'Price';
+        lbl.style.color=s==='open'?'var(--accent2)':s==='closed'?'var(--faint)':'var(--muted)';
+      }
     }).catch(()=>{el.textContent='—';});
 }
 function pmcap(s,sym){const v=s||"";const n=parseFloat(v.replace(/[$,]/g,""));if(!isNaN(n)&&n>0)return n;if(sym&&MKTCAP[sym]){try{return parseFloat(MKTCAP[sym].replace(/[$,]/g,""));}catch{}}return 0;}
@@ -679,7 +697,7 @@ function openStock(sym){
   const totQ=hist.filter(q=>q.percentageSurprise!=='');
   const beatPct=totQ.length?Math.round(beatQ.length/totQ.length*100):null;
   document.getElementById('sdMet').innerHTML=`
-    <div class="met"><div class="met-lbl">Live Price</div><div class="met-val" id="live-price-${sym}" style="font-size:13px">—</div></div>
+    <div class="met"><div class="met-lbl" id="live-price-lbl-${sym}">Live Price</div><div class="met-val" id="live-price-${sym}" style="font-size:13px">—</div></div>
     <div class="met"><div class="met-lbl">Mkt Cap</div><div class="met-val">${fmtMcap(mc)}</div></div>
     <div class="met"><div class="met-lbl">EPS TTM</div><div class="met-val">${epsTTM?'$'+epsTTM.toFixed(2):'—'}</div></div>
     <div class="met"><div class="met-lbl">REV TTM</div><div class="met-val">${revTTM?fmtM(revTTM):'—'}</div></div>
