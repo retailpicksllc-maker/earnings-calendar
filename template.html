@@ -397,7 +397,24 @@ function makeSection(label,rows){
     card.onclick=()=>openStock(r.symbol);
     wrap.appendChild(card);
   });
-  if(rows.length>12){const m=document.createElement('div');m.className='more-lbl';m.textContent='+'+( rows.length-12)+' more';wrap.appendChild(m);}
+  if(rows.length>12){
+    const m=document.createElement('div');m.className='more-lbl';
+    m.textContent='+'+(rows.length-12)+' more — tap to expand';
+    m.style.cursor='pointer';
+    m.onclick=()=>{
+      // Show all remaining cards
+      rows.slice(12).forEach(r=>{
+        const card=document.createElement('div');
+        card.className='logo-card'+(selSym===r.symbol?' sel':'');
+        const _qtr=r.fiscalQuarterEnding?qLbl((r.fiscalQuarterEnding||'').replace('/',' ')):'';
+        card.innerHTML=logoHtml(r.symbol,62)+'<span class="logo-sym">'+esc(r.symbol)+'</span>'+(_qtr?'<span class="logo-qtr">'+_qtr+'</span>':'');
+        card.onclick=()=>openStock(r.symbol);
+        wrap.insertBefore(card, m);
+      });
+      m.remove();
+    };
+    wrap.appendChild(m);
+  }
   sec.appendChild(wrap);
   return sec;
 }
@@ -458,16 +475,25 @@ function mergeHist(sym){
   Object.keys(PAST_DATA).sort().forEach(date=>{
     const row=(PAST_DATA[date]||[]).find(r=>r.symbol===sym);
     if(!row)return;
-    const eps=parseFloat((row.eps||'').replace(/[$,]/g,''));
-    const est=parseFloat((row.epsForecast||'').replace(/[$,]/g,''));
-    const surp=parseFloat(row.surprise);
-    if(isNaN(eps)&&isNaN(est))return;
+    // Support both NASDAQ fields (eps=actual, epsForecast=est) and Finnhub (epsActual=actual, eps=est)
+    const epsAct = row.epsActual!=null ? parseFloat(row.epsActual)
+                 : parseFloat((row.eps||'').replace(/[$,]/g,''));
+    const epsEst = row.epsForecast!=null ? parseFloat((row.epsForecast||'').replace(/[$,]/g,''))
+                 : (row.epsActual!=null && row.eps!=null ? parseFloat(row.eps) : NaN);
+    if(isNaN(epsAct)&&isNaN(epsEst))return;
+    let surp=parseFloat(row.surprise);
+    if(isNaN(surp)&&!isNaN(epsAct)&&!isNaN(epsEst)&&epsEst!==0){
+      surp=((epsAct-epsEst)/Math.abs(epsEst))*100;
+    }
     const qk=(row.fiscalQuarterEnding||date).replace('/',' ');
     if(seen.has(qk))return;
     seen.add(qk);
-    extra.push({fiscalQtrEnd:qk,dateReported:date,eps:isNaN(eps)?null:eps,
-      consensusForecast:isNaN(est)?'':String(est),
-      percentageSurprise:isNaN(surp)?'':String(surp),revActual:null});
+    extra.push({fiscalQtrEnd:qk,dateReported:date,
+      eps:isNaN(epsAct)?null:epsAct,
+      consensusForecast:isNaN(epsEst)?'':String(epsEst),
+      percentageSurprise:isNaN(surp)?'':String(surp),
+      revActual:row.revenueActual||null,
+      revEstimate:row.revenueEstimate||null});
   });
   const all=[...extra,...cached];
   const byQ={};
