@@ -356,7 +356,8 @@ print(f"  Cache saved: {len(history)} tickers")
 REV_CACHE_FILE = 'data/revenue_cache.json'
 REV_EST_CACHE_FILE = 'data/rev_est_cache.json'
 EPS_EST_CACHE_FILE = 'data/eps_est_cache.json'
-FMP_EST_CACHE_FILE  = 'data/fmp_est_cache.json'
+FMP_EST_CACHE_FILE   = 'data/fmp_est_cache.json'
+FMP_INC_CACHE_FILE  = 'data/fmp_income_cache.json'
 FMP_API_KEY = os.environ.get('FMP_API_KEY', '')
 revenue_cache = {}
 rev_est_cache = {}
@@ -382,6 +383,12 @@ if os.path.exists(EPS_EST_CACHE_FILE):
         print(f"  Loaded EPS estimate cache: {len(eps_est_cache)} tickers")
     except:
         pass
+fmp_income_cache = {}
+try:
+    with open(FMP_INC_CACHE_FILE) as _f: fmp_income_cache = json.load(_f)
+    print(f"  Loaded FMP income cache: {len(fmp_income_cache)} tickers")
+except: pass
+
 fmp_est_cache = {}
 if os.path.exists(FMP_EST_CACHE_FILE):
     try:
@@ -454,51 +461,40 @@ try:
                 for v in json.loads(urllib.request.urlopen(_req, timeout=15).read()).values()}
 except: pass
 
-def _sec_annual_fallback(ticker):
-    """For tickers with no yfinance revenue: try SEC annual (20-F/10-K) ÷ 4, expand to 4 quarters."""
-    cik = _cik_map.get(ticker)
-    if not cik: return {}
+def _fmp_income(ticker):
+    """Fetch quarterly revenue + EPS from FMP income statement."""
+    if not FMP_API_KEY:
+        return {}, {}
     try:
-        url = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json'
-        req = urllib.request.Request(url, headers={'User-Agent': 'retail.picksllc@gmail.com'})
-        facts = json.loads(urllib.request.urlopen(req, timeout=20).read())
-        annual = {}
-        for taxonomy in ['us-gaap', 'ifrs-full']:
-            tax = facts.get('facts', {}).get(taxonomy, {})
-            for field in ['Revenue', 'Revenues', 'RentalIncome',
-                          'RevenueFromContractWithCustomerExcludingAssessedTax',
-                          'SalesRevenueNet', 'NoninterestIncome']:
-                if field not in tax: continue
-                for cur, entries in tax[field].get('units', {}).items():
-                    fx = _FX.get(cur, 1.0) if cur != 'USD' else 1.0
-                    for e in entries:
-                        if e.get('form') not in ('10-K', '20-F', '40-F'): continue
-                        val = e.get('val', 0)
-                        if val <= 0: continue
-                        val_usd = val / fx / 1e6
-                        if val_usd < 1 or val_usd > 2e6: continue
-                        try:
-                            s = datetime.strptime(e.get('start', e['end']), '%Y-%m-%d')
-                            en = datetime.strptime(e['end'], '%Y-%m-%d')
-                            if 330 <= (en - s).days <= 400:
-                                k = en.strftime('%b %Y')
-                                if k not in annual or val_usd > annual[k]:
-                                    annual[k] = round(val_usd / 4, 1)
-                        except: continue
-                if annual: break
-            if annual: break
-        # Expand annual entries to all 4 quarters of that year
-        result = {}
-        for key, val in annual.items():
-            end = datetime.strptime(key, '%b %Y')
-            for offset in [0, -3, -6, -9]:
-                mo = ((end.month - 1 + offset) % 12) + 1
-                yr = end.year + ((end.month - 1 + offset) // 12)
-                k = datetime(yr, mo, 1).strftime('%b %Y')
-                if k not in result:
-                    result[k] = val
-        return result
-    except: return {}
+        url = f'https://financialmodelingprep.com/api/v3/income-statement/{ticker}?period=quarter&limit=12&apikey={FMP_API_KEY}'
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            rows = json.loads(r.read())
+        if not rows or not isinstance(rows, list):
+            return {}, {}
+        rev_out, eps_out = {}, {}
+        for row in rows:
+            date = row.get('date', '')
+            if not date: continue
+            try:
+                from datetime import datetime as _dt
+                d = _dt.strptime(date[:10], '%Y-%m-%d')
+                qk = d.strftime('%b %Y')
+            except: continue
+            rev = row.get('revenue')
+            eps = row.get('eps')
+            if rev is not None:
+                try: rev_out[qk] = round(float(rev) / 1e6, 1)
+                except: pass
+            if eps is not None:
+                try: eps_out[qk] = float(eps)
+                except: pass
+        return rev_out, eps_out
+    except: return {}, {}
+
+def _sec_annual_fallback(ticker):
+    """Replaced by FMP income statement."""
+    return {}
 
 
 def _fmp_estimates(ticker):
@@ -549,18 +545,64 @@ def _finnhub_rev_estimate(ticker):
     _, rev = _fmp_estimates(ticker)
     return rev
 
+# Upcoming symbols for cache-bypass logic
+upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol'))
+
+# FMP income: fetch rev actuals + eps actuals for tickers not cached
+fmp_income_data = dict(fmp_income_cache)
+fmp_inc_fetch = [t for t in all_rev_tickers if t not in fmp_income_data or
+                 t in upcoming_syms]
+# Also fetch for top_tickers not yet in income cache
+for sym in top_tickers:
+    if sym not in fmp_income_data and sym not in fmp_inc_fetch:
+        fmp_inc_fetch.append(sym)
+fmp_inc_fetch = fmp_inc_fetch[:600]  # cap per build
+print(f"Fetching FMP income statements for {len(fmp_inc_fetch)} tickers...")
+
 def _fetch_one(ticker):
-    qtrs = _sec_annual_fallback(ticker)
-    return ticker, qtrs
+    rev, eps = _fmp_income(ticker)
+    return ticker, rev, eps
+
+with ThreadPoolExecutor(max_workers=5) as ex:
+    for ticker, rev, eps in ex.map(_fetch_one, fmp_inc_fetch, timeout=300):
+        entry = {'rev': rev, 'eps': eps}
+        fmp_income_data[ticker] = entry
+        if rev:
+            revenue_data[ticker] = rev
+
+# Backfill revenue from existing cache for tickers not just fetched
+for ticker, entry in fmp_income_data.items():
+    if ticker not in revenue_data and entry.get('rev'):
+        revenue_data[ticker] = entry['rev']
+
+# Backfill EPS history from FMP income for tickers not covered by Finnhub
+for ticker, entry in fmp_income_data.items():
+    if ticker not in history and entry.get('eps'):
+        eps_by_qtr = entry['eps']  # {qk: eps_val}
+        quarters = []
+        for qk, eps_val in sorted(eps_by_qtr.items(),
+                                  key=lambda x: datetime.strptime(x[0], '%b %Y') if len(x[0])==8 else datetime.min,
+                                  reverse=True):
+            quarters.append({'fiscalQtrEnd': qk, 'eps': eps_val,
+                             'consensusForecast': '', 'percentageSurprise': '',
+                             'dateReported': '', 'revActual': eps_by_qtr.get(qk),
+                             'revEstimate': None})
+        if quarters:
+            history[ticker] = quarters
+
+# Save FMP income cache
+try:
+    with open(FMP_INC_CACHE_FILE, 'w') as _f: json.dump(fmp_income_data, _f)
+    print(f"  FMP income cache saved: {len(fmp_income_data)} tickers")
+except Exception as e:
+    print(f"WARN FMP income cache save: {e}")
 
 rev_est_data = dict(rev_est_cache)
 with ThreadPoolExecutor(max_workers=8) as ex:
-    for ticker, qtrs in ex.map(_fetch_one, tickers_needing_rev, timeout=300):
-        if qtrs:
-            revenue_data[ticker] = qtrs
+    for ticker, qtrs in ex.map(lambda t: (t, {}), [], timeout=10):
+        pass  # revenue now from FMP income above
 
-# Upcoming tickers need fresh estimate attempts even if previously cached empty
-upcoming_syms = set(r.get('symbol','') for rows in earnings.values() for r in rows if r.get('symbol'))
+
 
 # Fetch revenue estimates — always retry upcoming tickers with empty cache
 est_tickers = [t for t in rev_tickers if t not in rev_est_data or (t in upcoming_syms and not rev_est_data.get(t))]
