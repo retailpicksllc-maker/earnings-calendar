@@ -588,15 +588,17 @@ function openStock(sym){
   const _epsEstDict=EPS_EST[sym]||null;
   // Find rev estimate for a given fiscalQtrEnd
   function _revEst(fqe){
-    if(!_revEstDict||!fqe)return null;
-    if(_revEstDict[fqe]!=null)return _revEstDict[fqe];
+    if(!_revEstDict)return null;
+    if(fqe&&_revEstDict[fqe]!=null)return _revEstDict[fqe];
+    if(_revEstDict['0q']!=null)return _revEstDict['0q'];
     const vals=Object.values(_revEstDict);
     return vals.length?vals[0]:null;
   }
   // Find EPS estimate — exact match on quarter key only (no fallback; avoid showing wrong-quarter estimate)
   function _epsEst(fqe){
-    if(!_epsEstDict||!fqe)return null;
-    return _epsEstDict[fqe]!=null?_epsEstDict[fqe]:null;
+    if(!_epsEstDict)return null;
+    if(fqe&&_epsEstDict[fqe]!=null)return _epsEstDict[fqe];
+    return _epsEstDict['0q']!=null?_epsEstDict['0q']:null;
   }
   // Detect upcoming
   const isUpcoming=!(PAST_DATA[TODAY_ISO]||[]).some(r=>r.symbol===sym)&&Object.keys(DATA).some(iso=>(DATA[iso]||[]).find(r=>r.symbol===sym));
