@@ -98,9 +98,21 @@ print(f"Fetching upcoming earnings from NASDAQ ({td_list[0]} to {td_list[-1]})..
 earnings = {}
 with ThreadPoolExecutor(max_workers=5) as ex:
     results = list(ex.map(fetch_nasdaq_day, td_list))
+# Load existing mktcap cache
+mktcap_cache_path = 'data/marketcap_cache.json'
+try:
+    with open(mktcap_cache_path) as _f: mktcap_cache = json.load(_f)
+except: mktcap_cache = {}
+
 for date_str, rows in zip(td_list, results):
     if rows:
         earnings[date_str] = rows
+        # Populate mktcap cache from NASDAQ data
+        for r in rows:
+            sym = r.get('symbol','')
+            mc = r.get('marketCap','')
+            if sym and mc:
+                mktcap_cache[sym] = mc
 
 # Fill in further-out dates (Aug+) from Finnhub where NASDAQ is sparse
 far_td_list = []
@@ -682,6 +694,13 @@ for date_str, rows in earnings.items():
 
 prices = {}  # prices removed from page
 
+# Save mktcap cache
+try:
+    with open(mktcap_cache_path, 'w') as _f: json.dump(mktcap_cache, _f)
+    print(f"Saved mktcap_cache: {len(mktcap_cache)} tickers")
+except Exception as e:
+    print(f"WARN mktcap cache save: {e}")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
@@ -697,6 +716,7 @@ output = (template
     .replace('__EPS_EST_JS__', json.dumps(eps_est_data,  ensure_ascii=False))
     .replace('__NEWS_JS__',     json.dumps(news,       ensure_ascii=False))
     .replace('__META_JS__',     json.dumps(stock_meta, ensure_ascii=False))
+    .replace('__MKTCAP_JS__',    json.dumps(mktcap_cache, ensure_ascii=False))
     .replace('__BUILT_AT__',    json.dumps(built_at)))
 
 with open('docs/index.html', 'w') as f:
