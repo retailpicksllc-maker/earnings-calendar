@@ -752,11 +752,10 @@ function openStock(sym){
     <div class="met"><div class="met-lbl">Beat Rate</div><div class="met-val ${beatPct!=null?(beatPct>=50?'up':'dn'):''}">${beatPct!=null?beatPct+'%':'—'}</div></div>
     <div class="met"><div class="met-lbl">Quarters</div><div class="met-val">${totQ.length||'—'}</div></div>
     <div class="met"><div class="met-lbl">EPS Est</div><div class="met-val">${m.eps?'$'+m.eps:'—'}</div></div>`;
-  fetchLivePrice(sym);
-
   _chartSym=sym;
   switchTab(0,document.querySelector('.sd-tab'));
   buildEarnings(sym,hist,m,_revDict,_revEstDict,_epsEstDict);
+  fetchLivePrice(sym);
   buildNews(sym);
 }
 
