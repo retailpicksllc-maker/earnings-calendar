@@ -831,25 +831,38 @@ upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[
 
 price_syms = past_price_syms + upcoming_price_syms
 
-# Fetch prices via yfinance (free, no key, no rate limit)
+# Fetch prices via yfinance in batches of 50 (avoids hang on large requests)
 print(f"Fetching prices for {len(price_syms)} tickers via yfinance...")
 try:
     import yfinance as yf
-    if price_syms:
-        df = yf.download(price_syms, period='5d', interval='1d',
-                         auto_adjust=True, progress=False, threads=True)
-        close = df['Close'] if hasattr(df['Close'], 'columns') else df[['Close']].rename(columns={'Close': price_syms[0]})
-        for sym in price_syms:
+    import signal
+
+    def _yf_batch(syms):
+        df = yf.download(syms, period='5d', interval='1d',
+                         auto_adjust=True, progress=False, threads=False)
+        if df.empty:
+            return
+        close = df['Close'] if hasattr(df.get('Close', df), 'columns') else df[['Close']].rename(columns={'Close': syms[0]})
+        for sym in syms:
             try:
-                series = close[sym].dropna()
+                col = close[sym] if sym in close.columns else close.iloc[:, 0]
+                series = col.dropna()
                 if len(series) >= 1:
                     c = round(float(series.iloc[-1]), 2)
                     pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
                     dp = round((c - pc) / pc * 100, 2) if pc else 0.0
                     price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
             except: pass
+
+    batch_size = 50
+    for i in range(0, len(price_syms), batch_size):
+        batch = price_syms[i:i+batch_size]
+        try:
+            _yf_batch(batch)
+        except Exception as e:
+            print(f"  WARN yfinance batch {i}: {e}")
 except Exception as e:
-    print(f"  WARN yfinance price fetch: {e}")
+    print(f"  WARN yfinance: {e}")
 print(f"  Got prices for {len(price_data)} tickers")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
