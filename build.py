@@ -831,38 +831,59 @@ upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[
 
 price_syms = past_price_syms + upcoming_price_syms
 
-# Fetch prices via yfinance in batches of 50 (avoids hang on large requests)
+# Fetch prices via yfinance with signal.alarm hard timeout per batch
 print(f"Fetching prices for {len(price_syms)} tickers via yfinance...")
 try:
-    import yfinance as yf
-    import signal
+    import yfinance as yf, signal
 
-    def _yf_batch(syms):
-        df = yf.download(syms, period='5d', interval='1d',
-                         auto_adjust=True, progress=False, threads=False)
-        if df.empty:
-            return
-        close = df['Close'] if hasattr(df.get('Close', df), 'columns') else df[['Close']].rename(columns={'Close': syms[0]})
-        for sym in syms:
-            try:
-                col = close[sym] if sym in close.columns else close.iloc[:, 0]
-                series = col.dropna()
-                if len(series) >= 1:
-                    c = round(float(series.iloc[-1]), 2)
-                    pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
-                    dp = round((c - pc) / pc * 100, 2) if pc else 0.0
-                    price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
-            except: pass
+    def _yf_timeout(signum, frame): raise TimeoutError("yfinance hung")
+    signal.signal(signal.SIGALRM, _yf_timeout)
+
+    def _parse_yf_df(df, syms):
+        if df is None or df.empty: return
+        # Handle single vs multi-ticker column structure
+        try:
+            close = df['Close']
+        except: return
+        if not hasattr(close, 'columns'):
+            # Single ticker — close is a Series
+            series = close.dropna()
+            sym = syms[0]
+            if len(series) >= 1:
+                c = round(float(series.iloc[-1]), 2)
+                pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
+                dp = round((c - pc) / pc * 100, 2) if pc else 0.0
+                price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
+        else:
+            for sym in syms:
+                try:
+                    col = close[sym] if sym in close.columns else None
+                    if col is None: continue
+                    series = col.dropna()
+                    if len(series) >= 1:
+                        c = round(float(series.iloc[-1]), 2)
+                        pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
+                        dp = round((c - pc) / pc * 100, 2) if pc else 0.0
+                        price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
+                except: pass
 
     batch_size = 50
     for i in range(0, len(price_syms), batch_size):
         batch = price_syms[i:i+batch_size]
         try:
-            _yf_batch(batch)
+            signal.alarm(25)  # 25s hard timeout per batch
+            df = yf.download(batch, period='5d', interval='1d',
+                             auto_adjust=True, progress=False, threads=False)
+            signal.alarm(0)
+            _parse_yf_df(df, batch)
+        except TimeoutError:
+            signal.alarm(0)
+            print(f"  WARN batch {i} timed out, skipping")
         except Exception as e:
-            print(f"  WARN yfinance batch {i}: {e}")
+            signal.alarm(0)
+            print(f"  WARN batch {i}: {e}")
 except Exception as e:
-    print(f"  WARN yfinance: {e}")
+    print(f"  WARN yfinance setup: {e}")
 print(f"  Got prices for {len(price_data)} tickers")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
