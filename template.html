@@ -317,14 +317,18 @@ let _livePriceTimer=null, _livePriceSym=null;
 
 function _renderPrice(sym,c,dp,session){
   const el=document.getElementById('live-price-'+sym);
+  const chgEl=document.getElementById('live-price-chg-'+sym);
   const lbl=document.getElementById('live-price-lbl-'+sym);
   if(!el)return;
-  const sign=dp>=0?'+':'';
-  const col=dp>=0?'var(--accent2)':'var(--red)';
-  el.innerHTML='$'+c.toFixed(2)+' <span style="color:'+col+';font-size:11px">'+sign+dp.toFixed(2)+'%</span>';
+  el.textContent='$'+c.toFixed(2);
   el.classList.remove('price-tick');
-  void el.offsetWidth; // force reflow to restart animation
+  void el.offsetWidth;
   el.classList.add('price-tick');
+  if(chgEl){
+    const sign=dp>=0?'+':'';
+    chgEl.textContent=sign+dp.toFixed(2)+'%';
+    chgEl.style.color=dp>=0?'var(--accent2)':'var(--red)';
+  }
   if(lbl){
     lbl.textContent=session==='pre'?'Pre-Mkt':session==='after'?'After Hrs':session==='open'?'Live':'Last';
     lbl.style.color=session==='open'?'var(--accent2)':session==='closed'?'var(--faint)':'var(--muted)';
@@ -673,6 +677,13 @@ function openStock(sym){
     const upRevEst=_revEstDict?fmtM(Object.values(_revEstDict)[0]||null):null;
     const upDate=m.date||'';
     const upWhen=m.when||'';
+    rows+=`<div class="ec-row">
+      <div class="ec-metric" id="live-price-lbl-${sym}" style="color:var(--muted)">Price</div>
+      <div></div>
+      <div class="ec-actual" id="live-price-${sym}" style="font-size:15px;font-weight:800;color:var(--fg)">—</div>
+      <div class="ec-surp" id="live-price-chg-${sym}" style="color:var(--faint)">—</div>
+    </div>
+    <div class="ec-row-divider"></div>`;
     rows+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 14px 10px">
       <div>
         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)">EPS Estimate</div>
@@ -695,6 +706,13 @@ function openStock(sym){
     const epsSurp=q0.percentageSurprise!==''?parseFloat(q0.percentageSurprise):null;
     const revEstVal=_revEst(q0.fiscalQtrEnd);
     const revSurpPct=(revAct&&revEstVal)?((revAct-revEstVal)/revEstVal*100):null;
+    rows+=`<div class="ec-row">
+      <div class="ec-metric" id="live-price-lbl-${sym}" style="color:var(--muted)">Price</div>
+      <div></div>
+      <div class="ec-actual" id="live-price-${sym}" style="font-size:15px;font-weight:800;color:var(--fg)">—</div>
+      <div class="ec-surp" id="live-price-chg-${sym}" style="color:var(--faint)">—</div>
+    </div>
+    <div class="ec-row-divider"></div>`;
     rows+=`<div class="ec-row">
       <div class="ec-metric">REV</div>
       <div class="ec-est" style="color:var(--faint)">${revEstVal?fmtM(revEstVal):'—'}</div>
@@ -728,7 +746,6 @@ function openStock(sym){
   const totQ=hist.filter(q=>q.percentageSurprise!=='');
   const beatPct=totQ.length?Math.round(beatQ.length/totQ.length*100):null;
   document.getElementById('sdMet').innerHTML=`
-    <div class="met"><div class="met-lbl" id="live-price-lbl-${sym}">Live Price</div><div class="met-val" id="live-price-${sym}" style="font-size:13px">—</div></div>
     <div class="met"><div class="met-lbl">Mkt Cap</div><div class="met-val">${fmtMcap(mc)}</div></div>
     <div class="met"><div class="met-lbl">EPS TTM</div><div class="met-val">${epsTTM?'$'+epsTTM.toFixed(2):'—'}</div></div>
     <div class="met"><div class="met-lbl">REV TTM</div><div class="met-val">${revTTM?fmtM(revTTM):'—'}</div></div>
