@@ -326,7 +326,7 @@ function _renderPrice(sym,c,dp,session){
   void el.offsetWidth; // force reflow to restart animation
   el.classList.add('price-tick');
   if(lbl){
-    lbl.textContent=session==='pre'?'Pre-Mkt':session==='after'?'After Hrs':session==='open'?'Live':'Price';
+    lbl.textContent=session==='pre'?'Pre-Mkt':session==='after'?'After Hrs':session==='open'?'Live':'Last';
     lbl.style.color=session==='open'?'var(--accent2)':session==='closed'?'var(--faint)':'var(--muted)';
   }
 }
