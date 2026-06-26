@@ -816,7 +816,7 @@ for iso, rows in past_earnings.items():
                 mc = parse_mcap(r.get('marketCap','')) or parse_mcap(mktcap_cache.get(sym,''))
                 past_for_price.append((mc, sym))
 past_for_price.sort(reverse=True)
-past_price_syms = list(dict.fromkeys(sym for _, sym in past_for_price))[:30]
+past_price_syms = list(dict.fromkeys(sym for _, sym in past_for_price))[:50]
 
 # Priority 2: upcoming tickers sorted by market cap
 upcoming_for_price = []
@@ -827,38 +827,30 @@ for rows in earnings.values():
             mc = parse_mcap(r.get('marketCap','')) or parse_mcap(mktcap_cache.get(sym,''))
             upcoming_for_price.append((mc, sym))
 upcoming_for_price.sort(reverse=True)
-upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[:30]
+upcoming_price_syms = list(dict.fromkeys(sym for _, sym in upcoming_for_price))[:150]
 
 price_syms = past_price_syms + upcoming_price_syms
 
-def fetch_price(sym):
-    try:
-        url = f'https://finnhub.io/api/v1/quote?symbol={sym}&token={FINNHUB_KEY}'
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=3) as r:
-            d = json.loads(r.read())
-        if d and d.get('c'):
-            return sym, {'c': round(d['c'], 2), 'dp': round(d.get('dp', 0), 2), 'pc': round(d.get('pc', 0), 2)}
-    except: pass
-    return sym, None
-
-if FINNHUB_KEY and price_syms:
-    print(f"Fetching live prices for {len(price_syms)} tickers...")
-    try:
-        import time as _time
-        from concurrent.futures import as_completed
-        with ThreadPoolExecutor(max_workers=15) as ex:
-            futures = {ex.submit(fetch_price, sym): sym for sym in price_syms[:60]}
-            _deadline = _time.time() + 45
-            for fut in as_completed(futures, timeout=45):
-                if _time.time() > _deadline: break
-                try:
-                    sym, p = fut.result()
-                    if p: price_data[sym] = p
-                except: pass
-    except Exception as e:
-        print(f"  WARN price fetch: {e}")
-    print(f"  Got prices for {len(price_data)} tickers")
+# Fetch prices via yfinance (free, no key, no rate limit)
+print(f"Fetching prices for {len(price_syms)} tickers via yfinance...")
+try:
+    import yfinance as yf
+    if price_syms:
+        df = yf.download(price_syms, period='5d', interval='1d',
+                         auto_adjust=True, progress=False, threads=True)
+        close = df['Close'] if hasattr(df['Close'], 'columns') else df[['Close']].rename(columns={'Close': price_syms[0]})
+        for sym in price_syms:
+            try:
+                series = close[sym].dropna()
+                if len(series) >= 1:
+                    c = round(float(series.iloc[-1]), 2)
+                    pc = round(float(series.iloc[-2]), 2) if len(series) >= 2 else c
+                    dp = round((c - pc) / pc * 100, 2) if pc else 0.0
+                    price_data[sym] = {'c': c, 'dp': dp, 'pc': pc}
+            except: pass
+except Exception as e:
+    print(f"  WARN yfinance price fetch: {e}")
+print(f"  Got prices for {len(price_data)} tickers")
 
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
