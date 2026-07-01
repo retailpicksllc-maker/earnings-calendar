@@ -335,7 +335,28 @@ function _renderPrice(sym,c,dp,session){
   }
 }
 
+function _r2(v){return Math.round(v*100)/100;}
 async function _fetchYFPrice(sym){
+  const sess=mktSession();
+  // Try Yahoo Finance first — returns real postMarketPrice/preMarketPrice
+  try{
+    const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(sym)+'?interval=1m&range=1d&includePrePost=true';
+    const ctrl=new AbortController();const tid=setTimeout(()=>ctrl.abort(),4000);
+    const r=await fetch(url,{signal:ctrl.signal,headers:{'Accept':'application/json'}});
+    clearTimeout(tid);
+    if(r.ok){
+      const d=await r.json();
+      const meta=(d.chart||{}).result?.[0]?.meta;
+      if(meta){
+        const pc=meta.previousClose||meta.chartPreviousClose||meta.regularMarketPrice;
+        let price=meta.regularMarketPrice;
+        if(sess==='after'&&meta.postMarketPrice) price=meta.postMarketPrice;
+        if(sess==='pre'&&meta.preMarketPrice) price=meta.preMarketPrice;
+        if(price&&pc) return{c:_r2(price),dp:_r2((price-pc)/pc*100),pc:_r2(pc)};
+      }
+    }
+  }catch(e){}
+  // Fall back to Finnhub (regular session price on free tier)
   if(!FH_KEY)return null;
   try{
     const url='https://finnhub.io/api/v1/quote?symbol='+encodeURIComponent(sym)+'&token='+FH_KEY;

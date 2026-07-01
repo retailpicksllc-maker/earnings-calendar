@@ -860,6 +860,43 @@ if FINNHUB_KEY and price_syms:
         print(f"  WARN price fetch: {e}")
     print(f"  Got prices for {len(price_data)} tickers")
 
+# ── 4b. Yahoo Finance extended-hours prices (after-hours 4-8pm ET, pre-mkt 4-9:30am ET) ──
+et_hour = datetime.now(EASTERN).hour
+et_min  = datetime.now(EASTERN).minute
+in_ext  = (16 <= et_hour < 20) or (4 <= et_hour < 9) or (et_hour == 9 and et_min < 30)
+if in_ext and price_syms:
+    print(f"Fetching extended-hours prices from Yahoo Finance ({len(price_syms)} tickers)...")
+    import urllib.request as _ur
+    def _yf_ext(sym):
+        try:
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1m&range=1d&includePrePost=true"
+            req = _ur.Request(url, headers={"User-Agent":"Mozilla/5.0","Accept":"application/json"})
+            with _ur.urlopen(req, timeout=4) as r:
+                meta = json.loads(r.read()).get("chart",{}).get("result",[{}])[0].get("meta",{})
+            pc = meta.get("previousClose") or meta.get("chartPreviousClose") or meta.get("regularMarketPrice")
+            if et_hour >= 16:
+                ext_p = meta.get("postMarketPrice")
+            else:
+                ext_p = meta.get("preMarketPrice")
+            if ext_p and pc:
+                dp = round((ext_p - pc) / pc * 100, 2)
+                return sym, {"c": round(ext_p, 2), "dp": dp, "pc": round(pc, 2)}
+        except: pass
+        return sym, None
+    try:
+        import time as _t2
+        from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac2
+        with _TPE(max_workers=10) as ex:
+            futs = {ex.submit(_yf_ext, s): s for s in price_syms}
+            _dl2 = _t2.time() + 30
+            for fut in _ac2(futs, timeout=35):
+                if _t2.time() > _dl2: break
+                sym2, p2 = fut.result()
+                if p2: price_data[sym2] = p2   # override with extended-hours price
+    except Exception as e:
+        print(f"  WARN YF ext fetch: {e}")
+    print(f"  After extended-hours update: {len(price_data)} tickers")
+
 # ── 5. Serialize & write ──────────────────────────────────────────────────────
 built_at = datetime.now(EASTERN).strftime('%b %d, %Y at %-I:%M %p ET')
 
