@@ -483,14 +483,14 @@ function renderWeek(){
       const aft=[...rows.filter(r=>r.time==='time-after-hours')].sort(sortMC);
       // After market open: pre-market reporters already reported
       if(mktOpen&&pre.length)col.appendChild(makeSection('📋 Reported',pre));
-      else if(!mktOpen&&pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
+      else if(!mktOpen&&pre.length)col.appendChild(makeSection('☀️ Pre Market',pre));
       if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
     } else {
       // Future dates — never "Reported"
       const sortMC=(a,b)=>pmcap(b.marketCap,b.symbol)-pmcap(a.marketCap,a.symbol);
       const pre=[...rows.filter(r=>r.time==='time-pre-market')].sort(sortMC);
       const aft=[...rows.filter(r=>r.time==='time-after-hours')].sort(sortMC);
-      if(pre.length)col.appendChild(makeSection('☀️ Before Open',pre));
+      if(pre.length)col.appendChild(makeSection('☀️ Pre Market',pre));
       if(aft.length)col.appendChild(makeSection('🌙 After Close',aft));
     }
     grid.appendChild(col);
